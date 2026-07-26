@@ -1001,7 +1001,12 @@
           if (isEditing) {
             var noteField = createEditableField(node.x, noteY, node.width, NOTE_LINE_HEIGHT, noteText, 'note-edit-input', function (val, commit) {
               node.notes[i] = val;
-              if (commit) renderAll();
+              if (commit) {
+                if (val.trim() === '') {
+                  node.notes.splice(i, 1);
+                }
+                renderAll();
+              }
             });
             svg.appendChild(noteField.fo);
           } else {
