@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Кресленик речень</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blueprint-bg: #16324F;
+    --blueprint-bg-deep: #102640;
+    --grid-line: rgba(157, 205, 255, 0.08);
+    --grid-line-strong: rgba(157, 205, 255, 0.14);
+    --ink: #EAF4FF;
+    --ink-dim: #9FBEDB;
+    --accent: #6FD6C9;
+    --accent-dim: rgba(111, 214, 201, 0.35);
+    --box-stroke: #CFE8FF;
+    --paper-card: #0F2A45;
+    --danger: #E0876B;
+    --edge-selected: #F4C363;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--blueprint-bg);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line-strong) 1px, transparent 1px);
+    background-size: 16px 16px, 16px 16px, 80px 80px, 80px 80px;
+    background-position: -1px -1px;
+  }
+
+  .wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  .topbar {
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--grid-line-strong);
+    box-shadow: 0 6px 16px rgba(4, 14, 26, 0.35);
+    z-index: 20;
+    position: relative;
+  }
+  .topbar .wrap { padding-top: 22px; padding-bottom: 18px; }
+
+  .content-scroll {
+    flex: 1 1 auto;
+    overflow: auto;
+    position: relative;
+  }
+  .content-scroll .wrap { padding-top: 26px; padding-bottom: 26px; }
+
+  .statusbar {
+    flex: 0 0 auto;
+    background: var(--paper-card);
+    border-top: 1px solid var(--grid-line-strong);
+    z-index: 20;
+  }
+  .statusbar .wrap {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--ink-dim);
+  }
+
+  header {
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px dashed var(--grid-line-strong);
+  }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 26px;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle {
+    color: var(--ink-dim);
+    font-size: 14.5px;
+    max-width: 620px;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .panel {
+    background: var(--paper-card);
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 4px;
+    padding: 16px 20px;
+    position: relative;
+  }
+
+  .panel::before {
+    content: "";
+    position: absolute;
+    top: 8px; left: 8px; right: 8px; bottom: 8px;
+    border: 1px dashed var(--grid-line-strong);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    position: relative;
+    z-index: 1;
+  }
+
+  #sentenceInput {
+    flex: 1;
+    background: var(--blueprint-bg-deep);
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 3px;
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    padding: 12px 14px;
+    outline: none;
+    transition: border-color 0.15s ease;
+  }
+
+  #sentenceInput::placeholder { color: var(--ink-dim); }
+  #sentenceInput:focus { border-color: var(--accent); }
+
+  button {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    padding: 12px 18px;
+    cursor: pointer;
+    transition: opacity 0.15s ease, border-color 0.15s ease;
+  }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  #addBtn, #clarifyBtn, #frameBtn {
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    padding: 0;
+    font-size: 20px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #addBtn {
+    background: var(--accent);
+    color: #0B2036;
+    font-weight: 600;
+  }
+  #addBtn:hover { opacity: 0.88; }
+
+  #clarifyBtn {
+    background: transparent;
+    color: var(--accent);
+    border-color: var(--accent-dim);
+  }
+  #clarifyBtn:hover { opacity: 0.8; }
+
+  #frameBtn {
+    background: transparent;
+    color: var(--accent);
+    border-color: var(--accent-dim);
+    font-size: 17px;
+  }
+  #frameBtn:hover { opacity: 0.8; }
+  #frameBtn.active {
+    background: rgba(244, 195, 99, 0.15);
+    color: var(--edge-selected);
+    border-color: var(--edge-selected);
+  }
+
+  .line-style-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .line-style-icons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .row-delete-top {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font-size: 15px;
+    background: transparent;
+    border: 1px solid var(--grid-line-strong);
+    color: var(--ink-dim);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: none;
+  }
+  .row-delete-top:hover { color: var(--danger); border-color: var(--danger); }
+  .row-delete-top:disabled { opacity: 0.35; cursor: not-allowed; }
+  .row-delete-top:disabled:hover { color: var(--ink-dim); border-color: var(--grid-line-strong); }
+
+  .line-style-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--blueprint-bg-deep);
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 3px;
+    color: var(--ink-dim);
+    padding: 6px 12px;
+    text-transform: none;
+  }
+  .line-style-btn:hover { color: var(--ink); border-color: var(--ink-dim); }
+  .line-style-btn.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(111, 214, 201, 0.08);
+  }
+
+  .target-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .target-indicator .target-value {
+    color: var(--accent);
+  }
+
+  .zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .move-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .zoom-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+    background: transparent;
+    border: 1px solid var(--grid-line-strong);
+    color: var(--ink-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: none;
+  }
+  .zoom-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  #zoomLabel { min-width: 40px; text-align: center; }
+
+  #sentenceList {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+
+  .sentence-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px dashed var(--grid-line-strong);
+  }
+  .sentence-row:last-child { border-bottom: none; }
+
+  .row-label {
+    flex: 0 0 auto;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    padding-top: 10px;
+    min-width: 52px;
+  }
+
+  .row-diagram {
+    flex: 1;
+    min-width: 0;
+    padding-bottom: 4px;
+  }
+
+  .row-diagram svg { display: block; }
+
+  .empty-state {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink-dim);
+    font-size: 13.5px;
+    padding: 30px 4px;
+    border: 1px dashed var(--grid-line-strong);
+    border-radius: 4px;
+    text-align: center;
+  }
+
+  .word-box {
+    fill: var(--blueprint-bg-deep);
+    stroke: var(--box-stroke);
+    stroke-width: 1.3;
+    cursor: pointer;
+  }
+
+  .word-box.selected {
+    stroke: var(--accent);
+    stroke-width: 2.4;
+    fill: rgba(111, 214, 201, 0.12);
+  }
+
+  .word-text {
+    fill: var(--ink);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    dominant-baseline: middle;
+    text-anchor: middle;
+    cursor: pointer;
+    pointer-events: none;
+  }
+
+  .note-text {
+    fill: var(--ink-dim);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    dominant-baseline: middle;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+
+  .note-divider {
+    stroke: var(--grid-line-strong);
+    stroke-width: 1;
+    pointer-events: none;
+  }
+
+  .link-line {
+    stroke: var(--accent);
+    fill: none;
+    pointer-events: none;
+  }
+
+  .link-hit {
+    stroke: transparent;
+    stroke-width: 14;
+    fill: none;
+    cursor: pointer;
+  }
+
+  .link-line.line-dashed { stroke-width: 1.3; stroke-dasharray: 3 3; }
+  .link-line.line-solid { stroke-width: 1.3; }
+  .link-line.line-double { stroke-width: 1.3; }
+
+  .link-line.selected {
+    stroke: var(--edge-selected);
+    stroke-width: 2.6;
+    stroke-dasharray: none;
+  }
+
+  .group-frame {
+    fill: rgba(244, 195, 99, 0.06);
+    stroke: var(--accent-dim);
+    stroke-width: 1.5;
+    stroke-dasharray: 6 4;
+    pointer-events: stroke;
+    cursor: pointer;
+  }
+  .group-frame.active {
+    stroke: var(--edge-selected);
+    fill: rgba(244, 195, 99, 0.1);
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4, 14, 26, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal-overlay.hidden { display: none; }
+  .modal-box {
+    background: var(--paper-card);
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 4px;
+    padding: 22px 26px;
+    max-width: 320px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(4, 14, 26, 0.5);
+  }
+  .modal-box p {
+    margin: 0;
+    font-size: 14.5px;
+    line-height: 1.5;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 18px;
+  }
+  .modal-actions button { min-width: 80px; }
+  #confirmOkBtn { background: var(--accent); color: #0B2036; font-weight: 600; }
+  #confirmOkBtn:hover { opacity: 0.88; }
+  #confirmCancelBtn { background: transparent; color: var(--ink-dim); border-color: var(--grid-line-strong); }
+  #confirmCancelBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 0 16px; }
+    .topbar .wrap { padding-top: 14px; padding-bottom: 14px; }
+    .content-scroll .wrap { padding-top: 18px; padding-bottom: 18px; }
+    h1 { font-size: 21px; }
+    .eyebrow { font-size: 10.5px; }
+    .subtitle { font-size: 13px; }
+    header { padding-bottom: 12px; margin-bottom: 12px; }
+    .panel { padding: 12px 14px; }
+    .sentence-row { gap: 8px; padding: 10px 0; }
+    .row-label { min-width: 26px; font-size: 10px; padding-top: 8px; }
+    #addBtn, #clarifyBtn, #frameBtn { width: 42px; height: 42px; font-size: 18px; }
+    .statusbar .wrap { font-size: 10.5px; gap: 8px 14px; }
+  }
+
+  @media (max-width: 460px) {
+    .input-row { flex-wrap: wrap; }
+    #sentenceInput { flex: 1 1 100%; }
+    .line-style-row { flex-wrap: wrap; }
+    .statusbar .wrap { justify-content: center; text-align: center; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="wrap">
+      <header>
+        <p class="eyebrow">Схема речень · SVG-кресленик</p>
+        <h1>Кресленик речень</h1>
+        <p class="subtitle">Введіть текст і натисніть «+» — з'явиться новий термін. Клацніть на потрібний прямокутник, оберіть тип лінії та додайте до нього визначення. Кожне графічне речення — окремий рядок, що не перекриває сусідні.</p>
+      </header>
+
+      <div class="panel">
+        <div class="input-row">
+          <input type="text" id="sentenceInput" placeholder="Введіть текст прямокутника…" autocomplete="off">
+          <button id="addBtn" title="Додати">+</button>
+          <button id="clarifyBtn" title="Уточнити">✎</button>
+          <button id="frameBtn" title="Рамка визначень">⬚</button>
+        </div>
+        <div class="line-style-row" id="lineStyleRow">
+          <div class="line-style-icons">
+            <button class="line-style-btn" data-line-type="solid" title="Суцільна лінія">
+              <svg viewBox="0 0 48 20" width="48" height="20"><line x1="4" y1="10" x2="44" y2="10" stroke="currentColor" stroke-width="2"/></svg>
+            </button>
+            <button class="line-style-btn" data-line-type="dashed" title="Пунктирна лінія">
+              <svg viewBox="0 0 48 20" width="48" height="20"><line x1="4" y1="10" x2="44" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="5 4"/></svg>
+            </button>
+            <button class="line-style-btn" data-line-type="double" title="Подвійна суцільна лінія">
+              <svg viewBox="0 0 48 20" width="48" height="20"><line x1="4" y1="7" x2="44" y2="7" stroke="currentColor" stroke-width="2"/><line x1="4" y1="13" x2="44" y2="13" stroke="currentColor" stroke-width="2"/></svg>
+            </button>
+          </div>
+          <button class="row-delete-top" id="deleteSentenceBtn" title="Видалити графічне речення">🗑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="content-scroll" id="contentScroll">
+    <div class="wrap">
+      <div id="canvasZoom">
+        <div id="sentenceList"></div>
+        <div id="emptyState" class="empty-state">Поки що немає жодного графічного речення. Введіть текст вище.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="statusbar">
+    <div class="wrap">
+      <span id="countLabel">Речень додано: 0</span>
+      <div class="target-indicator">
+        <span>Додати до: <span class="target-value" id="targetLabel">новий термін</span></span>
+      </div>
+      <div class="move-controls">
+        <button class="zoom-btn" id="moveUpBtn" title="Перемістити вгору">▲</button>
+        <button class="zoom-btn" id="moveDownBtn" title="Перемістити вниз">▼</button>
+      </div>
+      <div class="zoom-controls">
+        <button class="zoom-btn" id="zoomOutBtn" title="Зменшити">−</button>
+        <span id="zoomLabel">100%</span>
+        <button class="zoom-btn" id="zoomInBtn" title="Збільшити">+</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="confirmModal">
+    <div class="modal-box">
+      <p id="confirmMessage">Ви впевнені?</p>
+      <div class="modal-actions">
+        <button id="confirmOkBtn">Ок</button>
+        <button id="confirmCancelBtn">Ні</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Кожне графічне речення — це дерево прямокутників (nodes), з'єднаних
+  // ребрами (edges) із заданим типом лінії. STORAGE.sentences — масив таких дерев.
+  var STORAGE = { sentences: [], nextNodeId: 1 };
+
+  // Поточний вибір: або прямокутник (type: 'node') — ціль для додавання/уточнення,
+  // або лінія-зв'язок (type: 'edge') — ціль для заміни типу лінії.
+  // null означає «нічого не вибрано» — наступне «Додати» створить нове графічне речення.
+  var selection = { type: null, sentenceIndex: null, nodeId: null, parentId: null, childId: null };
+
+  // Тип лінії, який буде застосовано до наступного доданого з'єднання.
+  var currentLineType = 'solid';
+
+  var input = document.getElementById('sentenceInput');
+  var addBtn = document.getElementById('addBtn');
+  var clarifyBtn = document.getElementById('clarifyBtn');
+  var frameBtn = document.getElementById('frameBtn');
+  var lineStyleButtons = Array.prototype.slice.call(document.querySelectorAll('.line-style-btn'));
+  var list = document.getElementById('sentenceList');
+  var emptyState = document.getElementById('emptyState');
+  var countLabel = document.getElementById('countLabel');
+  var targetLabel = document.getElementById('targetLabel');
+  var canvasZoom = document.getElementById('canvasZoom');
+  var zoomInBtn = document.getElementById('zoomInBtn');
+  var zoomOutBtn = document.getElementById('zoomOutBtn');
+  var zoomLabel = document.getElementById('zoomLabel');
+  var moveUpBtn = document.getElementById('moveUpBtn');
+  var moveDownBtn = document.getElementById('moveDownBtn');
+  var deleteSentenceBtn = document.getElementById('deleteSentenceBtn');
+  var confirmModal = document.getElementById('confirmModal');
+  var confirmMessage = document.getElementById('confirmMessage');
+  var confirmOkBtn = document.getElementById('confirmOkBtn');
+  var confirmCancelBtn = document.getElementById('confirmCancelBtn');
+
+  // Рамка групування прямокутників визначень: активна рамка — та, яку зараз
+  // розширюємо/звужуємо клацанням по інших прямокутниках того самого речення.
+  var activeFrame = { sentenceIndex: null, groupId: null };
+  var nextGroupId = 1;
+
+  var zoomLevel = 1;
+  var ZOOM_MIN = 0.5;
+  var ZOOM_MAX = 2;
+  var ZOOM_STEP = 0.1;
+
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var BOX_HEIGHT = 44;
+  // Зменшена втричі (порівняно з BOX_HEIGHT) висота «шапки» прямокутника —
+  // застосовується, коли всередині є уточнюючі рядки, щоб відстань між
+  // рядком терміну та рядком уточнення була значно меншою.
+  var HEADER_HEIGHT_WITH_NOTES = 27;
+  var BOX_PAD_X = 16;
+  var NOTE_LINE_HEIGHT = 20;
+  var SIBLING_GAP = 30;
+  var LEVEL_GAP = 64;
+  var ROW_PAD = 12;
+  var FONT = "500 15px 'IBM Plex Mono', monospace";
+
+  var measureCanvas = document.createElement('canvas');
+  var measureCtx = measureCanvas.getContext('2d');
+  measureCtx.font = FONT;
+
+  function measureTextWidth(text) {
+    return measureCtx.measureText(text).width;
+  }
+
+  function createNode(text) {
+    var node = {
+      id: STORAGE.nextNodeId++,
+      text: text,
+      notes: [], // уточнюючі рядки всередині того самого прямокутника
+      children: [] // { node, lineType }
+    };
+    return node;
+  }
+
+  function findNode(root, nodeId) {
+    if (root.id === nodeId) return root;
+    for (var i = 0; i < root.children.length; i++) {
+      var found = findNode(root.children[i].node, nodeId);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function findEdge(root, parentId, childId) {
+    var parent = findNode(root, parentId);
+    if (!parent) return null;
+    for (var i = 0; i < parent.children.length; i++) {
+      if (parent.children[i].node.id === childId) return parent.children[i];
+    }
+    return null;
+  }
+
+  // Знаходить батьківський прямокутник вузла та його індекс серед children
+  // батька. Повертає null, якщо вузол — корінь (немає батька в дереві).
+  function findParent(root, nodeId) {
+    for (var i = 0; i < root.children.length; i++) {
+      if (root.children[i].node.id === nodeId) {
+        return { parent: root, index: i };
+      }
+      var deeper = findParent(root.children[i].node, nodeId);
+      if (deeper) return deeper;
+    }
+    return null;
+  }
+
+  // Обчислює позиції (x, y, width, height) усіх прямокутників дерева так, щоб
+  // наступний прямокутник малювався ПРАВОРУЧ від попереднього (по рівнях-колонках),
+  // а сиблінги одного батька розташовувались один під одним, не перекриваючись.
+  function layoutTree(root) {
+    var maxWidthByDepth = [];
+    var maxDepth = 0;
+
+    function measure(node, depth) {
+      maxDepth = Math.max(maxDepth, depth);
+      var lines = [node.text].concat(node.notes || []);
+      var widest = 0;
+      lines.forEach(function (line) {
+        widest = Math.max(widest, measureTextWidth(line));
+      });
+      var hasNotes = !!(node.notes && node.notes.length);
+      node.width = Math.max(widest + BOX_PAD_X * 2, 40);
+      node.headerHeight = hasNotes ? HEADER_HEIGHT_WITH_NOTES : BOX_HEIGHT;
+      node.height = node.headerHeight + (hasNotes ? node.notes.length * NOTE_LINE_HEIGHT + 6 : 0);
+      node.depth = depth;
+      maxWidthByDepth[depth] = Math.max(maxWidthByDepth[depth] || 0, node.width);
+      node.children.forEach(function (edge) {
+        measure(edge.node, depth + 1);
+      });
+    }
+    measure(root, 0);
+
+    var columnX = [ROW_PAD];
+    for (var d = 1; d <= maxDepth; d++) {
+      columnX[d] = columnX[d - 1] + maxWidthByDepth[d - 1] + LEVEL_GAP;
+    }
+
+    var cursorY = ROW_PAD;
+
+    function place(node) {
+      node.x = columnX[node.depth];
+
+      if (node.children.length === 0) {
+        node.y = cursorY;
+        cursorY += node.height + SIBLING_GAP;
+      } else {
+        node.children.forEach(function (edge) {
+          place(edge.node);
+        });
+        var first = node.children[0].node;
+        var last = node.children[node.children.length - 1].node;
+        var firstCenter = first.y + first.height / 2;
+        var lastCenter = last.y + last.height / 2;
+        node.y = (firstCenter + lastCenter) / 2 - node.height / 2;
+      }
+    }
+
+    place(root);
+
+    var totalWidth = columnX[maxDepth] + maxWidthByDepth[maxDepth] + ROW_PAD;
+    var totalHeight = cursorY - SIBLING_GAP + ROW_PAD;
+    return { width: totalWidth, height: totalHeight };
+  }
+
+  function buildConnectorPath(x1, y1, x2, y2, yOffset) {
+    var oy1 = y1 + yOffset;
+    var oy2 = y2 + yOffset;
+    var midX = (x1 + x2) / 2;
+    return 'M ' + x1 + ' ' + oy1 + ' C ' + midX + ' ' + oy1 + ', ' + midX + ' ' + oy2 + ', ' + x2 + ' ' + oy2;
+  }
+
+  function drawConnector(svg, fromNode, toNode, lineType, isSelected) {
+    var x1 = fromNode.x + fromNode.width;
+    var y1 = fromNode.y + fromNode.height / 2;
+    var x2 = toNode.x;
+    var y2 = toNode.y + toNode.height / 2;
+
+    var hit = document.createElementNS(SVG_NS, 'path');
+    hit.setAttribute('class', 'link-hit');
+    hit.setAttribute('d', buildConnectorPath(x1, y1, x2, y2, 0));
+    svg.appendChild(hit);
+
+    if (lineType === 'double') {
+      [-2.5, 2.5].forEach(function (offset) {
+        var path = document.createElementNS(SVG_NS, 'path');
+        path.setAttribute('class', 'link-line line-double' + (isSelected ? ' selected' : ''));
+        path.setAttribute('d', buildConnectorPath(x1, y1, x2, y2, offset));
+        svg.appendChild(path);
+      });
+    } else {
+      var path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('class', 'link-line line-' + lineType + (isSelected ? ' selected' : ''));
+      path.setAttribute('d', buildConnectorPath(x1, y1, x2, y2, 0));
+      svg.appendChild(path);
+    }
+
+    return hit;
+  }
+
+  function buildDiagram(sentence, sentenceIndex) {
+    var root = sentence.root;
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    var bounds = layoutTree(root);
+    svg.setAttribute('width', bounds.width);
+    svg.setAttribute('height', bounds.height);
+    svg.setAttribute('viewBox', '0 0 ' + bounds.width + ' ' + bounds.height);
+
+    var FRAME_PAD = 10;
+    (sentence.groups || []).forEach(function (group) {
+      if (!group.nodeIds.length) return;
+      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      group.nodeIds.forEach(function (id) {
+        var n = findNode(root, id);
+        if (!n) return;
+        minX = Math.min(minX, n.x);
+        minY = Math.min(minY, n.y);
+        maxX = Math.max(maxX, n.x + n.width);
+        maxY = Math.max(maxY, n.y + n.height);
+      });
+      if (minX === Infinity) return;
+      var isActive = activeFrame.sentenceIndex === sentenceIndex && activeFrame.groupId === group.id;
+      var frameRect = document.createElementNS(SVG_NS, 'rect');
+      frameRect.setAttribute('class', 'group-frame' + (isActive ? ' active' : ''));
+      frameRect.setAttribute('x', minX - FRAME_PAD);
+      frameRect.setAttribute('y', minY - FRAME_PAD);
+      frameRect.setAttribute('width', (maxX - minX) + FRAME_PAD * 2);
+      frameRect.setAttribute('height', (maxY - minY) + FRAME_PAD * 2);
+      frameRect.setAttribute('rx', 6);
+      frameRect.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (activeFrame.sentenceIndex === sentenceIndex && activeFrame.groupId === group.id) {
+          activeFrame.sentenceIndex = null;
+          activeFrame.groupId = null;
+        } else {
+          activeFrame.sentenceIndex = sentenceIndex;
+          activeFrame.groupId = group.id;
+        }
+        renderAll();
+      });
+      svg.appendChild(frameRect);
+    });
+
+    function drawNode(node) {
+      node.children.forEach(function (edge) {
+        var isEdgeSelected = selection.type === 'edge' && selection.sentenceIndex === sentenceIndex &&
+          selection.parentId === node.id && selection.childId === edge.node.id;
+        var hit = drawConnector(svg, node, edge.node, edge.lineType, isEdgeSelected);
+        hit.addEventListener('click', function () {
+          selectEdge(sentenceIndex, node.id, edge.node.id);
+        });
+      });
+
+      var isNodeSelected = selection.type === 'node' && selection.sentenceIndex === sentenceIndex && selection.nodeId === node.id;
+
+      var rect = document.createElementNS(SVG_NS, 'rect');
+      rect.setAttribute('class', 'word-box' + (isNodeSelected ? ' selected' : ''));
+      rect.setAttribute('x', node.x);
+      rect.setAttribute('y', node.y);
+      rect.setAttribute('width', node.width);
+      rect.setAttribute('height', node.height);
+      rect.setAttribute('rx', 3);
+      rect.addEventListener('click', function () {
+        selectNode(sentenceIndex, node.id);
+      });
+      svg.appendChild(rect);
+
+      var text = document.createElementNS(SVG_NS, 'text');
+      text.setAttribute('class', 'word-text');
+      text.setAttribute('x', node.x + node.width / 2);
+      text.setAttribute('y', node.y + node.headerHeight / 2 + 1);
+      text.textContent = node.text;
+      svg.appendChild(text);
+
+      if (node.notes && node.notes.length) {
+        var divider = document.createElementNS(SVG_NS, 'line');
+        divider.setAttribute('class', 'note-divider');
+        divider.setAttribute('x1', node.x + 6);
+        divider.setAttribute('x2', node.x + node.width - 6);
+        divider.setAttribute('y1', node.y + node.headerHeight);
+        divider.setAttribute('y2', node.y + node.headerHeight);
+        svg.appendChild(divider);
+
+        node.notes.forEach(function (noteText, i) {
+          var noteEl = document.createElementNS(SVG_NS, 'text');
+          noteEl.setAttribute('class', 'note-text');
+          noteEl.setAttribute('x', node.x + node.width / 2);
+          noteEl.setAttribute('y', node.y + node.headerHeight + i * NOTE_LINE_HEIGHT + NOTE_LINE_HEIGHT / 2 + 3);
+          noteEl.textContent = noteText;
+          svg.appendChild(noteEl);
+        });
+      }
+
+      node.children.forEach(function (edge) {
+        drawNode(edge.node);
+      });
+    }
+
+    drawNode(root);
+    return svg;
+  }
+
+  function selectNode(sentenceIndex, nodeId) {
+    if (activeFrame.groupId !== null && activeFrame.sentenceIndex === sentenceIndex) {
+      toggleFrameMembership(sentenceIndex, nodeId);
+      return;
+    }
+    if (selection.type === 'node' && selection.sentenceIndex === sentenceIndex && selection.nodeId === nodeId) {
+      clearSelection();
+      return;
+    }
+    selection.type = 'node';
+    selection.sentenceIndex = sentenceIndex;
+    selection.nodeId = nodeId;
+    selection.parentId = null;
+    selection.childId = null;
+    renderAll();
+    input.focus();
+  }
+
+  function selectEdge(sentenceIndex, parentId, childId) {
+    if (selection.type === 'edge' && selection.sentenceIndex === sentenceIndex &&
+      selection.parentId === parentId && selection.childId === childId) {
+      clearSelection();
+      return;
+    }
+    selection.type = 'edge';
+    selection.sentenceIndex = sentenceIndex;
+    selection.parentId = parentId;
+    selection.childId = childId;
+    selection.nodeId = null;
+    renderAll();
+  }
+
+  function clearSelection() {
+    selection.type = null;
+    selection.sentenceIndex = null;
+    selection.nodeId = null;
+    selection.parentId = null;
+    selection.childId = null;
+    renderAll();
+  }
+
+  // Додає/прибирає прямокутник з активної рамки-групи (розширення рамки на
+  // прямокутники визначень, розміщені зверху чи знизу від початкового).
+  function toggleFrameMembership(sentenceIndex, nodeId) {
+    if (activeFrame.sentenceIndex !== sentenceIndex || activeFrame.groupId === null) return;
+    var sentence = STORAGE.sentences[sentenceIndex];
+    if (!sentence) return;
+    var group = (sentence.groups || []).filter(function (g) { return g.id === activeFrame.groupId; })[0];
+    if (!group) return;
+    var pos = group.nodeIds.indexOf(nodeId);
+    if (pos === -1) {
+      group.nodeIds.push(nodeId);
+    } else if (group.nodeIds.length > 1) {
+      group.nodeIds.splice(pos, 1);
+    } else {
+      sentence.groups = sentence.groups.filter(function (g) { return g.id !== group.id; });
+      activeFrame.sentenceIndex = null;
+      activeFrame.groupId = null;
+    }
+    renderAll();
+  }
+
+  // Перевіряє, чи можна перемістити поточний вибраний прямокутник у вказаному
+  // напрямку (-1 — вгору списку, 1 — вниз списку) серед сиблінгів або, якщо
+  // це коренева вершина, серед графічних речень.
+  function canMoveNode(direction) {
+    if (selection.type !== 'node') return false;
+    var sentence = STORAGE.sentences[selection.sentenceIndex];
+    if (!sentence) return false;
+    if (sentence.root.id === selection.nodeId) {
+      var newSentenceIdx = selection.sentenceIndex + direction;
+      return newSentenceIdx >= 0 && newSentenceIdx < STORAGE.sentences.length;
+    }
+    var parentInfo = findParent(sentence.root, selection.nodeId);
+    if (!parentInfo) return false;
+    var newIdx = parentInfo.index + direction;
+    return newIdx >= 0 && newIdx < parentInfo.parent.children.length;
+  }
+
+  // Переміщує вибраний прямокутник термін/визначення вгору чи вниз списку.
+  // Оскільки переміщується весь елемент children (node + lineType), дочірні
+  // прямокутники переміщуються разом з батьківським.
+  function moveNode(direction) {
+    if (!canMoveNode(direction)) return;
+    var sentence = STORAGE.sentences[selection.sentenceIndex];
+
+    if (sentence.root.id === selection.nodeId) {
+      var idx = selection.sentenceIndex;
+      var newSentenceIdx = idx + direction;
+      var tmpSentence = STORAGE.sentences[idx];
+      STORAGE.sentences[idx] = STORAGE.sentences[newSentenceIdx];
+      STORAGE.sentences[newSentenceIdx] = tmpSentence;
+      if (activeFrame.sentenceIndex === idx) activeFrame.sentenceIndex = newSentenceIdx;
+      else if (activeFrame.sentenceIndex === newSentenceIdx) activeFrame.sentenceIndex = idx;
+      selection.sentenceIndex = newSentenceIdx;
+      renderAll();
+      return;
+    }
+
+    var parentInfo = findParent(sentence.root, selection.nodeId);
+    var siblings = parentInfo.parent.children;
+    var pos = parentInfo.index;
+    var newPos = pos + direction;
+    var tmpEdge = siblings[pos];
+    siblings[pos] = siblings[newPos];
+    siblings[newPos] = tmpEdge;
+    renderAll();
+  }
+
+  // Показує модальне вікно підтвердження з кнопками «Ок»/«Ні».
+  var pendingConfirmAction = null;
+  function showConfirm(message, onOk) {
+    confirmMessage.textContent = message;
+    pendingConfirmAction = onOk;
+    confirmModal.classList.remove('hidden');
+  }
+  function hideConfirm() {
+    confirmModal.classList.add('hidden');
+    pendingConfirmAction = null;
+  }
+
+  function setCurrentLineType(lineType) {
+    currentLineType = lineType;
+    lineStyleButtons.forEach(function (btn) {
+      btn.classList.toggle('active', btn.getAttribute('data-line-type') === lineType);
+    });
+
+    if (selection.type === 'edge') {
+      var sentence = STORAGE.sentences[selection.sentenceIndex];
+      var edge = sentence ? findEdge(sentence.root, selection.parentId, selection.childId) : null;
+      if (edge) {
+        edge.lineType = lineType;
+        renderAll();
+      }
+    }
+  }
+
+  function updateTargetIndicator() {
+    moveUpBtn.disabled = !canMoveNode(-1);
+    moveDownBtn.disabled = !canMoveNode(1);
+    deleteSentenceBtn.disabled = (selection.sentenceIndex === null || selection.sentenceIndex === undefined);
+    frameBtn.classList.toggle('active', activeFrame.groupId !== null);
+
+    if (selection.type === 'node') {
+      var sentence = STORAGE.sentences[selection.sentenceIndex];
+      var node = sentence ? findNode(sentence.root, selection.nodeId) : null;
+      if (!node) { clearSelection(); return; }
+      targetLabel.textContent = '«' + node.text + '»';
+      return;
+    }
+    if (selection.type === 'edge') {
+      var edgeSentence = STORAGE.sentences[selection.sentenceIndex];
+      var parent = edgeSentence ? findNode(edgeSentence.root, selection.parentId) : null;
+      var edgeObj = edgeSentence ? findEdge(edgeSentence.root, selection.parentId, selection.childId) : null;
+      if (!parent || !edgeObj) { clearSelection(); return; }
+      targetLabel.textContent = 'лінія «' + parent.text + '» → «' + edgeObj.node.text + '»';
+      return;
+    }
+    targetLabel.textContent = 'новий термін';
+  }
+
+  function renderAll() {
+    if (activeFrame.sentenceIndex !== null && !STORAGE.sentences[activeFrame.sentenceIndex]) {
+      activeFrame.sentenceIndex = null;
+      activeFrame.groupId = null;
+    }
+
+    list.innerHTML = '';
+    emptyState.style.display = STORAGE.sentences.length === 0 ? 'block' : 'none';
+
+    STORAGE.sentences.forEach(function (sentence, index) {
+      sentence.groups = sentence.groups || [];
+
+      var row = document.createElement('div');
+      row.className = 'sentence-row';
+
+      var label = document.createElement('div');
+      label.className = 'row-label';
+      label.textContent = String(index + 1).padStart(2, '0');
+
+      var diagramHolder = document.createElement('div');
+      diagramHolder.className = 'row-diagram';
+      diagramHolder.appendChild(buildDiagram(sentence, index));
+
+      row.appendChild(label);
+      row.appendChild(diagramHolder);
+      list.appendChild(row);
+    });
+
+    countLabel.textContent = 'Речень додано: ' + STORAGE.sentences.length;
+    updateTargetIndicator();
+  }
+
+  function addBox() {
+    var value = input.value.trim();
+    if (!value) return;
+
+    if (selection.type === 'edge') {
+      // На вибраній лінії новий прямокутник не додається — лінія використовується
+      // лише для заміни її типу через ряд іконок нижче.
+      return;
+    }
+
+    if (selection.type !== 'node') {
+      // Немає вибраного прямокутника — створюємо нове графічне речення (корінь).
+      var root = createNode(value);
+      STORAGE.sentences.push({ root: root, groups: [] });
+    } else {
+      var sentence = STORAGE.sentences[selection.sentenceIndex];
+      var targetNode = sentence ? findNode(sentence.root, selection.nodeId) : null;
+      if (!targetNode) {
+        clearSelection();
+        input.value = '';
+        return;
+      }
+      var childNode = createNode(value);
+      targetNode.children.push({ node: childNode, lineType: currentLineType });
+    }
+
+    input.value = '';
+    renderAll();
+    input.focus();
+  }
+
+  function addClarifyingLine() {
+    var value = input.value.trim();
+    if (!value) return;
+    if (selection.type !== 'node') return;
+
+    var sentence = STORAGE.sentences[selection.sentenceIndex];
+    var targetNode = sentence ? findNode(sentence.root, selection.nodeId) : null;
+    if (!targetNode) {
+      clearSelection();
+      input.value = '';
+      return;
+    }
+    targetNode.notes.push(value);
+
+    input.value = '';
+    renderAll();
+    input.focus();
+  }
+
+  addBtn.addEventListener('click', addBox);
+  clarifyBtn.addEventListener('click', addClarifyingLine);
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') addBox();
+  });
+  lineStyleButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      setCurrentLineType(btn.getAttribute('data-line-type'));
+    });
+  });
+
+  frameBtn.addEventListener('click', function () {
+    if (activeFrame.groupId !== null) {
+      activeFrame.sentenceIndex = null;
+      activeFrame.groupId = null;
+      renderAll();
+      return;
+    }
+    if (selection.type !== 'node') return;
+    var sentence = STORAGE.sentences[selection.sentenceIndex];
+    if (!sentence) return;
+    sentence.groups = sentence.groups || [];
+    var group = { id: nextGroupId++, nodeIds: [selection.nodeId] };
+    sentence.groups.push(group);
+    activeFrame.sentenceIndex = selection.sentenceIndex;
+    activeFrame.groupId = group.id;
+    renderAll();
+  });
+
+  moveUpBtn.addEventListener('click', function () { moveNode(-1); });
+  moveDownBtn.addEventListener('click', function () { moveNode(1); });
+
+  deleteSentenceBtn.addEventListener('click', function () {
+    if (selection.sentenceIndex === null || selection.sentenceIndex === undefined) return;
+    var idx = selection.sentenceIndex;
+    showConfirm('Видалити графічне речення №' + (idx + 1) + '?', function () {
+      STORAGE.sentences.splice(idx, 1);
+      if (activeFrame.sentenceIndex === idx) {
+        activeFrame.sentenceIndex = null;
+        activeFrame.groupId = null;
+      } else if (activeFrame.sentenceIndex !== null && activeFrame.sentenceIndex > idx) {
+        activeFrame.sentenceIndex -= 1;
+      }
+      if (selection.sentenceIndex === idx) {
+        clearSelection();
+      } else {
+        if (selection.sentenceIndex !== null && selection.sentenceIndex > idx) {
+          selection.sentenceIndex -= 1;
+        }
+        renderAll();
+      }
+    });
+  });
+
+  confirmOkBtn.addEventListener('click', function () {
+    var action = pendingConfirmAction;
+    hideConfirm();
+    if (action) action();
+  });
+  confirmCancelBtn.addEventListener('click', hideConfirm);
+
+  function setZoom(level) {
+    zoomLevel = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, level));
+    canvasZoom.style.zoom = zoomLevel;
+    zoomLabel.textContent = Math.round(zoomLevel * 100) + '%';
+  }
+
+  zoomInBtn.addEventListener('click', function () { setZoom(zoomLevel + ZOOM_STEP); });
+  zoomOutBtn.addEventListener('click', function () { setZoom(zoomLevel - ZOOM_STEP); });
+
+  setZoom(zoomLevel);
+  setCurrentLineType(currentLineType);
+  renderAll();
+})();
+</script>
+</body>
+</html>
