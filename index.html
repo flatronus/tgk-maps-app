@@ -568,7 +568,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.8.3</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.8.4</span></h1>
       </header>
 
       <div class="panel">
@@ -1148,7 +1148,12 @@
       }
     });
 
-    function drawNode(node) {
+    // Малювання розбито на два окремі проходи: спершу ВСІ лінії з'єднання
+    // для всього дерева, потім ВСІ прямокутники з текстом. Це гарантує, що
+    // жоден прямокутник ніколи не опиняється під невидимою (товстою, для
+    // зручного клацання) лінією-хітбоксом сусідньої чи дальшої гілки —
+    // інакше перетягування такого прямокутника не спрацьовувало б.
+    function drawConnectors(node) {
       node.children.forEach(function (edge) {
         var isEdgeSelected = selection.type === 'edge' && selection.sentenceIndex === sentenceIndex &&
           selection.parentId === node.id && selection.childId === edge.node.id;
@@ -1165,13 +1170,19 @@
           selectEdge(sentenceIndex, node.id, edge.node.id);
         });
       });
+      node.children.forEach(function (edge) {
+        drawConnectors(edge.node);
+      });
+    }
 
+    function drawNodeBox(node) {
       var isNodeSelected = selection.type === 'node' && selection.sentenceIndex === sentenceIndex && selection.nodeId === node.id;
       var isEditing = !!(editingTarget && editingTarget.sentenceIndex === sentenceIndex && editingTarget.nodeId === node.id);
 
       var rect = document.createElementNS(SVG_NS, 'rect');
       rect.setAttribute('class', 'word-box' + (isNodeSelected ? ' selected' : ''));
       rect.setAttribute('data-node-id', node.id);
+      rect.setAttribute('data-sentence-index', sentenceIndex);
       rect.setAttribute('x', node.x);
       rect.setAttribute('y', node.y);
       rect.setAttribute('width', node.width);
@@ -1236,11 +1247,12 @@
       }
 
       node.children.forEach(function (edge) {
-        drawNode(edge.node);
+        drawNodeBox(edge.node);
       });
     }
 
-    drawNode(root);
+    drawConnectors(root);
+    drawNodeBox(root);
     return svg;
   }
 
@@ -1403,21 +1415,28 @@
     var boxEl = el ? el.closest('[data-node-id]') : null;
     if (!boxEl) return;
     var targetNodeId = parseInt(boxEl.getAttribute('data-node-id'), 10);
-    reparentNode(dragInfo.sentenceIndex, dragInfo.nodeId, targetNodeId);
+    var targetSentenceIndex = parseInt(boxEl.getAttribute('data-sentence-index'), 10);
+    reparentNode(dragInfo.sentenceIndex, dragInfo.nodeId, targetSentenceIndex, targetNodeId);
   }
 
-  function reparentNode(sentenceIndex, draggedNodeId, targetNodeId) {
-    if (draggedNodeId === targetNodeId) return;
+  function reparentNode(sentenceIndex, draggedNodeId, targetSentenceIndex, targetNodeId) {
+    if (sentenceIndex === targetSentenceIndex && draggedNodeId === targetNodeId) return;
     var sentence = STORAGE.sentences[sentenceIndex];
-    if (!sentence) return;
+    var targetSentence = STORAGE.sentences[targetSentenceIndex];
+    if (!sentence || !targetSentence) return;
     if (sentence.root.id === draggedNodeId) return; // корінь речення не можна перепідключити
 
     var draggedNode = findNode(sentence.root, draggedNodeId);
-    var targetNode = findNode(sentence.root, targetNodeId);
+    var targetNode = findNode(targetSentence.root, targetNodeId);
     if (!draggedNode || !targetNode) return;
 
-    var subtreeIds = collectSubtreeIds(draggedNode);
-    if (subtreeIds.indexOf(targetNodeId) !== -1) return; // не можна в свого ж нащадка
+    // Заборона перепідключення вузла до самого себе чи до власного нащадка
+    // (лише в межах того самого речення — у різних реченнях дерева окремі,
+    // тому цикл неможливий у принципі).
+    if (sentenceIndex === targetSentenceIndex) {
+      var subtreeIds = collectSubtreeIds(draggedNode);
+      if (subtreeIds.indexOf(targetNodeId) !== -1) return; // не можна в свого ж нащадка
+    }
 
     var parentInfo = findParent(sentence.root, draggedNodeId);
     if (!parentInfo) return;
