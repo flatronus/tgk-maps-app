@@ -475,9 +475,24 @@
     stroke: var(--paper-card);
     stroke-width: 1.5;
     cursor: ns-resize;
-    pointer-events: all;
+    pointer-events: none;
   }
-  .frame-handle:hover { fill: var(--accent); }
+  .frame-handle-hit {
+    fill: transparent;
+    stroke: none;
+    cursor: ns-resize;
+    pointer-events: all;
+    touch-action: none;
+  }
+
+  .group-frame-title {
+    fill: var(--edge-selected);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
 
   .word-box.drop-target {
     stroke: var(--edge-selected);
@@ -658,6 +673,13 @@
   // рядки стають полями вводу). Активується кнопкою «✏» лише для вибраного
   // прямокутника і скидається одразу, як тільки вибір змінюється/знімається.
   var editingTarget = null;
+
+  // Заголовок рамки групування, що зараз редагується через основне поле
+  // вводу: { sentenceIndex, groupId }. Активується кнопкою «✏» при вибраній
+  // рамці; поточний заголовок (якщо є) підставляється в поле вводу, після
+  // чого натискання «Додати» зберігає введений текст як заголовок рамки.
+  var groupTitleEdit = null;
+  var DEFAULT_INPUT_PLACEHOLDER = input.getAttribute('placeholder') || 'Введіть текст прямокутника…';
 
   // Лічильник id для нових рамок групування; окремого «активного режиму»
   // рамки більше немає — рамка вибирається/знімається кліком, як node/edge.
@@ -877,7 +899,9 @@
     svg.setAttribute('viewBox', '0 0 ' + bounds.width + ' ' + bounds.height);
 
     var FRAME_PAD = 10;
+    var FRAME_TITLE_EXTRA = 14;
     var HANDLE_R = 6;
+    var HANDLE_HIT_R = 15;
     (sentence.groups || []).forEach(function (group) {
       if (!group.nodeIds.length) return;
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -891,10 +915,11 @@
       });
       if (minX === Infinity) return;
       var isSelected = selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === group.id;
+      var frameTopPad = FRAME_PAD + (group.title ? FRAME_TITLE_EXTRA : 0);
       var frameX = minX - FRAME_PAD;
-      var frameY = minY - FRAME_PAD;
+      var frameY = minY - frameTopPad;
       var frameW = (maxX - minX) + FRAME_PAD * 2;
-      var frameH = (maxY - minY) + FRAME_PAD * 2;
+      var frameH = (maxY - minY) + frameTopPad + FRAME_PAD;
 
       var frameRect = document.createElementNS(SVG_NS, 'rect');
       frameRect.setAttribute('class', 'group-frame' + (isSelected ? ' selected' : ''));
@@ -921,21 +946,42 @@
       });
       svg.appendChild(frameHit);
 
+      if (group.title) {
+        var titleEl = document.createElementNS(SVG_NS, 'text');
+        titleEl.setAttribute('class', 'group-frame-title');
+        titleEl.setAttribute('x', frameX + 10);
+        titleEl.setAttribute('y', frameY + 14);
+        titleEl.textContent = group.title;
+        svg.appendChild(titleEl);
+      }
+
       if (isSelected) {
         var centerX = frameX + frameW / 2;
         [{ y: frameY, handle: 'top' }, { y: frameY + frameH, handle: 'bottom' }].forEach(function (spec) {
+          // Окрема, більша за розміром невидима зона для pointerdown — на
+          // планшетах/телефонах тонкий видимий маркер (r=6) складно вхопити
+          // пальцем, тому клікабельна зона розширена (r=15) і має touch-action:none,
+          // щоб браузер не перехоплював жест як прокрутку сторінки.
+          var handleHit = document.createElementNS(SVG_NS, 'circle');
+          handleHit.setAttribute('class', 'frame-handle-hit');
+          handleHit.setAttribute('cx', centerX);
+          handleHit.setAttribute('cy', spec.y);
+          handleHit.setAttribute('r', HANDLE_HIT_R);
+          handleHit.addEventListener('pointerdown', function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            frameDrag = { sentenceIndex: sentenceIndex, groupId: group.id, handle: spec.handle };
+            try { handleHit.setPointerCapture(e.pointerId); } catch (err) {}
+            window.addEventListener('pointermove', onFrameDragMove);
+            window.addEventListener('pointerup', onFrameDragEnd);
+          });
+          svg.appendChild(handleHit);
+
           var handleEl = document.createElementNS(SVG_NS, 'circle');
           handleEl.setAttribute('class', 'frame-handle');
           handleEl.setAttribute('cx', centerX);
           handleEl.setAttribute('cy', spec.y);
           handleEl.setAttribute('r', HANDLE_R);
-          handleEl.addEventListener('pointerdown', function (e) {
-            e.stopPropagation();
-            e.preventDefault();
-            frameDrag = { sentenceIndex: sentenceIndex, groupId: group.id, handle: spec.handle };
-            window.addEventListener('pointermove', onFrameDragMove);
-            window.addEventListener('pointerup', onFrameDragEnd);
-          });
           svg.appendChild(handleEl);
         });
       }
@@ -1031,6 +1077,8 @@
 
   function selectNode(sentenceIndex, nodeId) {
     editingTarget = null;
+    groupTitleEdit = null;
+    input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
     if (selection.type === 'node' && selection.sentenceIndex === sentenceIndex && selection.nodeId === nodeId) {
       clearSelection();
       return;
@@ -1047,6 +1095,8 @@
 
   function selectEdge(sentenceIndex, parentId, childId) {
     editingTarget = null;
+    groupTitleEdit = null;
+    input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
     if (selection.type === 'edge' && selection.sentenceIndex === sentenceIndex &&
       selection.parentId === parentId && selection.childId === childId) {
       clearSelection();
@@ -1063,6 +1113,8 @@
 
   function clearSelection() {
     editingTarget = null;
+    groupTitleEdit = null;
+    input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
     selection.type = null;
     selection.sentenceIndex = null;
     selection.nodeId = null;
@@ -1079,6 +1131,8 @@
       clearSelection();
       return;
     }
+    groupTitleEdit = null;
+    input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
     selection.type = 'group';
     selection.sentenceIndex = sentenceIndex;
     selection.groupId = groupId;
@@ -1302,9 +1356,11 @@
     moveUpBtn.disabled = !canMoveNode(-1);
     moveDownBtn.disabled = !canMoveNode(1);
     deleteSentenceBtn.disabled = (selection.type === null);
-    editSentenceBtn.disabled = (selection.type !== 'node');
-    editSentenceBtn.classList.toggle('active', !!(editingTarget && selection.type === 'node' &&
-      editingTarget.sentenceIndex === selection.sentenceIndex && editingTarget.nodeId === selection.nodeId));
+    editSentenceBtn.disabled = (selection.type !== 'node' && selection.type !== 'group');
+    editSentenceBtn.classList.toggle('active', !!((editingTarget && selection.type === 'node' &&
+      editingTarget.sentenceIndex === selection.sentenceIndex && editingTarget.nodeId === selection.nodeId) ||
+      (groupTitleEdit && selection.type === 'group' &&
+      groupTitleEdit.sentenceIndex === selection.sentenceIndex && groupTitleEdit.groupId === selection.groupId)));
     frameBtn.disabled = !canGroupSelectedNode();
     frameBtn.classList.toggle('active', selection.type === 'group');
 
@@ -1324,7 +1380,7 @@
       return;
     }
     if (selection.type === 'group') {
-      targetLabel.textContent = 'рамка групування (тягніть маркери ▲/▼)';
+      targetLabel.textContent = 'рамка групування («✏» — заголовок, «+» — додати прямокутник)';
       return;
     }
     targetLabel.textContent = 'новий термін';
@@ -1374,7 +1430,39 @@
     }
 
     if (selection.type === 'group') {
-      // На вибраній рамці групування новий прямокутник не додається.
+      var groupSentence = STORAGE.sentences[selection.sentenceIndex];
+      var group = groupSentence ? (groupSentence.groups || []).filter(function (g) { return g.id === selection.groupId; })[0] : null;
+      if (!group) { clearSelection(); input.value = ''; return; }
+
+      // Якщо кнопкою «✏» увімкнено редагування заголовка рамки — «Додати»
+      // зберігає введений текст як заголовок, новий прямокутник не створюється.
+      if (groupTitleEdit && groupTitleEdit.sentenceIndex === selection.sentenceIndex && groupTitleEdit.groupId === selection.groupId) {
+        group.title = value;
+        groupTitleEdit = null;
+        input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
+        input.value = '';
+        renderAll();
+        input.focus();
+        return;
+      }
+
+      // Інакше «Додати» створює новий прямокутник-визначення поруч із
+      // рештою прямокутників рамки (той самий батько) і одразу включає
+      // його до цієї ж рамки групування.
+      var groupParent = findNode(groupSentence.root, group.parentId);
+      if (!groupParent) { clearSelection(); input.value = ''; return; }
+      var newGroupNode = createNode(value);
+      var lastGroupIdx = -1;
+      groupParent.children.forEach(function (edge, idx) {
+        if (group.nodeIds.indexOf(edge.node.id) !== -1) lastGroupIdx = idx;
+      });
+      var insertAt = lastGroupIdx === -1 ? groupParent.children.length : lastGroupIdx + 1;
+      groupParent.children.splice(insertAt, 0, { node: newGroupNode, lineType: currentLineType });
+      group.nodeIds.push(newGroupNode.id);
+
+      input.value = '';
+      renderAll();
+      input.focus();
       return;
     }
 
@@ -1445,6 +1533,26 @@
   // Перемикає режим редагування тексту вибраного прямокутника (основний
   // текст і уточнюючі рядки перетворюються на поля вводу).
   editSentenceBtn.addEventListener('click', function () {
+    if (selection.type === 'group') {
+      var isTitleEditing = !!(groupTitleEdit && groupTitleEdit.sentenceIndex === selection.sentenceIndex && groupTitleEdit.groupId === selection.groupId);
+      if (isTitleEditing) {
+        groupTitleEdit = null;
+        input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
+        input.value = '';
+        renderAll();
+        return;
+      }
+      var titleSentence = STORAGE.sentences[selection.sentenceIndex];
+      var titleGroup = titleSentence ? (titleSentence.groups || []).filter(function (g) { return g.id === selection.groupId; })[0] : null;
+      groupTitleEdit = { sentenceIndex: selection.sentenceIndex, groupId: selection.groupId };
+      input.value = (titleGroup && titleGroup.title) ? titleGroup.title : '';
+      input.placeholder = 'Заголовок рамки, тоді «+»…';
+      renderAll();
+      input.focus();
+      input.select();
+      return;
+    }
+
     if (selection.type !== 'node') return;
     var isCurrentlyEditing = !!(editingTarget && editingTarget.sentenceIndex === selection.sentenceIndex && editingTarget.nodeId === selection.nodeId);
     if (isCurrentlyEditing) {
