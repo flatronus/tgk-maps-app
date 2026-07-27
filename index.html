@@ -313,12 +313,6 @@
     gap: 6px;
   }
 
-  .move-controls {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
   .zoom-btn {
     width: 24px;
     height: 24px;
@@ -574,7 +568,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.8.2</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.8.3</span></h1>
       </header>
 
       <div class="panel">
@@ -619,10 +613,6 @@
       <span id="countLabel">Речень додано: 0</span>
       <div class="target-indicator">
         <span>Додати до: <span class="target-value" id="targetLabel">новий термін</span></span>
-      </div>
-      <div class="move-controls">
-        <button class="zoom-btn" id="moveUpBtn" title="Перемістити вгору">▲</button>
-        <button class="zoom-btn" id="moveDownBtn" title="Перемістити вниз">▼</button>
       </div>
       <div class="zoom-controls">
         <button class="zoom-btn" id="zoomOutBtn" title="Зменшити">−</button>
@@ -671,8 +661,6 @@
   var zoomInBtn = document.getElementById('zoomInBtn');
   var zoomOutBtn = document.getElementById('zoomOutBtn');
   var zoomLabel = document.getElementById('zoomLabel');
-  var moveUpBtn = document.getElementById('moveUpBtn');
-  var moveDownBtn = document.getElementById('moveDownBtn');
   var editSentenceBtn = document.getElementById('editSentenceBtn');
   var deleteSentenceBtn = document.getElementById('deleteSentenceBtn');
   var confirmModal = document.getElementById('confirmModal');
@@ -1460,51 +1448,6 @@
     return !!findParent(sentence.root, selection.nodeId);
   }
 
-  // Перевіряє, чи можна перемістити поточний вибраний прямокутник у вказаному
-  // напрямку (-1 — вгору списку, 1 — вниз списку) серед сиблінгів або, якщо
-  // це коренева вершина, серед графічних речень.
-  function canMoveNode(direction) {
-    if (selection.type !== 'node') return false;
-    var sentence = STORAGE.sentences[selection.sentenceIndex];
-    if (!sentence) return false;
-    if (sentence.root.id === selection.nodeId) {
-      var newSentenceIdx = selection.sentenceIndex + direction;
-      return newSentenceIdx >= 0 && newSentenceIdx < STORAGE.sentences.length;
-    }
-    var parentInfo = findParent(sentence.root, selection.nodeId);
-    if (!parentInfo) return false;
-    var newIdx = parentInfo.index + direction;
-    return newIdx >= 0 && newIdx < parentInfo.parent.children.length;
-  }
-
-  // Переміщує вибраний прямокутник термін/визначення вгору чи вниз списку.
-  // Оскільки переміщується весь елемент children (node + lineType), дочірні
-  // прямокутники переміщуються разом з батьківським.
-  function moveNode(direction) {
-    if (!canMoveNode(direction)) return;
-    var sentence = STORAGE.sentences[selection.sentenceIndex];
-
-    if (sentence.root.id === selection.nodeId) {
-      var idx = selection.sentenceIndex;
-      var newSentenceIdx = idx + direction;
-      var tmpSentence = STORAGE.sentences[idx];
-      STORAGE.sentences[idx] = STORAGE.sentences[newSentenceIdx];
-      STORAGE.sentences[newSentenceIdx] = tmpSentence;
-      selection.sentenceIndex = newSentenceIdx;
-      renderAll();
-      return;
-    }
-
-    var parentInfo = findParent(sentence.root, selection.nodeId);
-    var siblings = parentInfo.parent.children;
-    var pos = parentInfo.index;
-    var newPos = pos + direction;
-    var tmpEdge = siblings[pos];
-    siblings[pos] = siblings[newPos];
-    siblings[newPos] = tmpEdge;
-    renderAll();
-  }
-
   // Показує модальне вікно підтвердження з кнопками «Ок»/«Ні».
   var pendingConfirmAction = null;
   function showConfirm(message, onOk) {
@@ -1534,8 +1477,6 @@
   }
 
   function updateTargetIndicator() {
-    moveUpBtn.disabled = !canMoveNode(-1);
-    moveDownBtn.disabled = !canMoveNode(1);
     deleteSentenceBtn.disabled = (selection.type === null);
     editSentenceBtn.disabled = (selection.type !== 'node' && selection.type !== 'group');
     editSentenceBtn.classList.toggle('active', !!((editingTarget && selection.type === 'node' &&
@@ -1706,8 +1647,6 @@
     selectGroup(selection.sentenceIndex, group.id);
   });
 
-  moveUpBtn.addEventListener('click', function () { moveNode(-1); });
-  moveDownBtn.addEventListener('click', function () { moveNode(1); });
 
   // Перемикає режим редагування тексту вибраного прямокутника (основний
   // текст і уточнюючі рядки перетворюються на поля вводу).
