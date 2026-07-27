@@ -96,9 +96,19 @@
   }
 
   header {
-    padding-bottom: 16px;
-    margin-bottom: 16px;
+    padding: 0;
+    margin: 0;
     border-bottom: 1px dashed var(--grid-line-strong);
+  }
+
+  .app-version {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--ink-dim);
+    letter-spacing: 0.02em;
+    margin-left: 8px;
+    vertical-align: middle;
   }
 
   .eyebrow {
@@ -488,6 +498,7 @@
   .group-frame-title {
     fill: var(--edge-selected);
     font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
     font-size: 10px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -543,7 +554,7 @@
     h1 { font-size: 21px; }
     .eyebrow { font-size: 10.5px; }
     .subtitle { font-size: 13px; }
-    header { padding-bottom: 12px; margin-bottom: 12px; }
+    header { padding: 0; margin: 0; }
     .panel { padding: 12px 14px; }
     .sentence-row { gap: 8px; padding: 10px 0; }
     .row-label { min-width: 26px; font-size: 10px; padding-top: 8px; }
@@ -563,7 +574,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень</h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.8.2</span></h1>
       </header>
 
       <div class="panel">
@@ -710,9 +721,61 @@
   var ROW_PAD = 12;
   var FONT = "500 15px 'IBM Plex Mono', monospace";
 
+  // Параметри рамки групування та її заголовка.
+  var FRAME_PAD = 10;
+  var TITLE_FONT = "600 10px 'IBM Plex Mono', monospace";
+  var TITLE_PAD_X = 10;
+  var TITLE_LINE_HEIGHT = 13;
+  var TITLE_TOP_GAP = 6;
+  var TITLE_BOTTOM_GAP = 4;
+
   var measureCanvas = document.createElement('canvas');
   var measureCtx = measureCanvas.getContext('2d');
   measureCtx.font = FONT;
+
+  var titleMeasureCanvas = document.createElement('canvas');
+  var titleMeasureCtx = titleMeasureCanvas.getContext('2d');
+  titleMeasureCtx.font = TITLE_FONT;
+
+  function measureTitleWidth(text) {
+    return titleMeasureCtx.measureText(text).width;
+  }
+
+  // Розбиває текст заголовка рамки на рядки, що вміщуються в maxWidth
+  // (перенесення по словах; якщо саме слово довше за maxWidth — розбиває
+  // його по символах, щоб текст ніколи не виходив за межі рамки).
+  function wrapTitleText(text, maxWidth) {
+    var safeWidth = Math.max(maxWidth, 20);
+    var words = text.split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    var lines = [];
+    var current = '';
+    words.forEach(function (word) {
+      var candidate = current ? current + ' ' + word : word;
+      if (measureTitleWidth(candidate) <= safeWidth) {
+        current = candidate;
+        return;
+      }
+      if (current) { lines.push(current); current = ''; }
+      if (measureTitleWidth(word) <= safeWidth) {
+        current = word;
+        return;
+      }
+      var piece = '';
+      for (var i = 0; i < word.length; i++) {
+        var testPiece = piece + word[i];
+        if (measureTitleWidth(testPiece) > safeWidth && piece) {
+          lines.push(piece);
+          piece = word[i];
+        } else {
+          piece = testPiece;
+        }
+      }
+      current = piece;
+    });
+    if (current) lines.push(current);
+    return lines;
+  }
 
   function measureTextWidth(text) {
     return measureCtx.measureText(text).width;
@@ -909,38 +972,100 @@
 
   // Зсуває y-координату всього піддерева на dy (використовується, коли для
   // заголовка рамки групування, що охоплює найвищі прямокутники, не вистачає
-  // місця над діаграмою — інакше рамка/заголовок обрізались би зверху).
+  // місця над діаграмою — інакше рамка/заголовок обрізались би зверху; а
+  // також для вирівнювання прямокутників, доданих «до рамки», по її осі).
   function shiftTreeY(node, dy) {
     node.y += dy;
     node.children.forEach(function (edge) { shiftTreeY(edge.node, dy); });
+  }
+
+  // Знаходить мінімальний/максимальний y (з урахуванням висоти) серед усіх
+  // прямокутників дерева — потрібно, щоб знати, чи вистачає місця над/під
+  // діаграмою після вирівнювання прямокутників рамки.
+  function computeTreeYRange(node) {
+    var minY = node.y, maxY = node.y + node.height;
+    node.children.forEach(function (edge) {
+      var r = computeTreeYRange(edge.node);
+      minY = Math.min(minY, r.minY);
+      maxY = Math.max(maxY, r.maxY);
+    });
+    return { minY: minY, maxY: maxY };
+  }
+
+  // Знаходить усі ребра, додані «до рамки» (edge.frameGroupId === group.id),
+  // і вирівнює їх вертикально відносно горизонтальної осі рамки: перший
+  // такий прямокутник ставиться точно по центру рамки (пряма лінія), а
+  // кілька — розташовуються стовпчиком, відцентрованим на цій же осі (тоді
+  // лінії природно стають дугоподібними, як і для звичайних сиблінгів).
+  function repositionFrameChildren(root, group, frameCenterY) {
+    var edges = [];
+    (function walk(node) {
+      node.children.forEach(function (edge) {
+        if (edge.frameGroupId === group.id) edges.push(edge);
+        walk(edge.node);
+      });
+    })(root);
+    if (!edges.length) return;
+
+    if (edges.length === 1) {
+      var only = edges[0].node;
+      shiftTreeY(only, frameCenterY - (only.y + only.height / 2));
+      return;
+    }
+
+    var totalHeight = 0;
+    edges.forEach(function (edge, idx) {
+      totalHeight += edge.node.height;
+      if (idx > 0) totalHeight += SIBLING_GAP;
+    });
+    var cursor = frameCenterY - totalHeight / 2;
+    edges.forEach(function (edge) {
+      var n = edge.node;
+      shiftTreeY(n, cursor - n.y);
+      cursor += n.height + SIBLING_GAP;
+    });
   }
 
   function buildDiagram(sentence, sentenceIndex) {
     var root = sentence.root;
     var svg = document.createElementNS(SVG_NS, 'svg');
     var bounds = layoutTree(root);
-
-    var FRAME_PAD = 10;
-    var FRAME_TITLE_EXTRA = 14;
     var HANDLE_R = 6;
     var HANDLE_HIT_R = 15;
 
-    // Якщо рамка з заголовком охоплює найвищі прямокутники діаграми, під
-    // заголовок може не вистачити місця над y=0 — обчислюємо потрібний
-    // зсув усього дерева вниз ЗАЗДАЛЕГІДЬ, щоб заголовок гарантовано
-    // потрапляв у видиму область svg.
     var groupsList = sentence.groups || [];
-    var minFrameTop = 0;
-    groupsList.forEach(function (group) {
+
+    // Крок 1: межі кожної рамки рахуються ЛИШЕ за прямокутниками, що є
+    // членами групи (group.nodeIds) — прямокутники, додані «до рамки»,
+    // навмисно не входять сюди, щоб не впливати на розмір самої рамки.
+    // Одразу вирівнюємо ці «зовнішні» прямокутники по осі рамки.
+    var groupBoundsList = groupsList.map(function (group) {
       var gb = computeGroupBounds(root, group);
-      if (!gb) return;
-      var topPad = FRAME_PAD + (group.title ? FRAME_TITLE_EXTRA : 0);
-      minFrameTop = Math.min(minFrameTop, gb.minY - topPad);
+      if (gb) repositionFrameChildren(root, group, gb.minY + (gb.maxY - gb.minY) / 2);
+      return gb;
     });
+
+    // Крок 2: після вирівнювання рахуємо, скільки місця треба зверху під
+    // заголовки рамок (з урахуванням перенесення тексту) і чи вийшли якісь
+    // прямокутники за межі y=0 чи за нижню межу — і зсуваємо/розширюємо
+    // діаграму так, щоб усе було видно.
+    var yRange = computeTreeYRange(root);
+    var minFrameTop = Math.min(0, yRange.minY);
+    var groupMeta = groupsList.map(function (group, idx) {
+      var gb = groupBoundsList[idx];
+      if (!gb) return null;
+      var frameW = (gb.maxX - gb.minX) + FRAME_PAD * 2;
+      var titleLines = group.title ? wrapTitleText(group.title, frameW - TITLE_PAD_X * 2) : [];
+      var titleAreaHeight = titleLines.length ? (TITLE_TOP_GAP + titleLines.length * TITLE_LINE_HEIGHT + TITLE_BOTTOM_GAP) : 0;
+      var topPad = FRAME_PAD + titleAreaHeight;
+      minFrameTop = Math.min(minFrameTop, gb.minY - topPad);
+      return { titleLines: titleLines, topPad: topPad };
+    });
+
     var offsetY = minFrameTop < 0 ? Math.ceil(-minFrameTop) : 0;
     if (offsetY > 0) shiftTreeY(root, offsetY);
 
-    var totalHeight = bounds.height + offsetY;
+    var totalHeight = Math.max(bounds.height, yRange.maxY + ROW_PAD) + offsetY;
     svg.setAttribute('width', bounds.width);
     svg.setAttribute('height', totalHeight);
     svg.setAttribute('viewBox', '0 0 ' + bounds.width + ' ' + totalHeight);
@@ -950,12 +1075,13 @@
     // правого краю самої рамки, а не до конкретного прямокутника всередині.
     var frameBoundsByGroupId = {};
 
-    groupsList.forEach(function (group) {
+    groupsList.forEach(function (group, idx) {
       var gb = computeGroupBounds(root, group);
       if (!gb) return;
+      var meta = groupMeta[idx];
       var minX = gb.minX, minY = gb.minY, maxX = gb.maxX, maxY = gb.maxY;
       var isSelected = selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === group.id;
-      var frameTopPad = FRAME_PAD + (group.title ? FRAME_TITLE_EXTRA : 0);
+      var frameTopPad = meta ? meta.topPad : FRAME_PAD;
       var frameX = minX - FRAME_PAD;
       var frameY = minY - frameTopPad;
       var frameW = (maxX - minX) + FRAME_PAD * 2;
@@ -987,12 +1113,18 @@
       });
       svg.appendChild(frameHit);
 
-      if (group.title) {
+      if (meta && meta.titleLines.length) {
         var titleEl = document.createElementNS(SVG_NS, 'text');
         titleEl.setAttribute('class', 'group-frame-title');
-        titleEl.setAttribute('x', frameX + 10);
-        titleEl.setAttribute('y', frameY + 14);
-        titleEl.textContent = group.title;
+        titleEl.setAttribute('x', frameX + TITLE_PAD_X);
+        titleEl.setAttribute('y', frameY + TITLE_TOP_GAP + 8);
+        meta.titleLines.forEach(function (line, lineIdx) {
+          var tspan = document.createElementNS(SVG_NS, 'tspan');
+          tspan.setAttribute('x', frameX + TITLE_PAD_X);
+          if (lineIdx > 0) tspan.setAttribute('dy', TITLE_LINE_HEIGHT);
+          tspan.textContent = line;
+          titleEl.appendChild(tspan);
+        });
         svg.appendChild(titleEl);
       }
 
