@@ -890,36 +890,77 @@
     return { fo: fo, inputEl: inputEl };
   }
 
+  // Обчислює межі (minX/minY/maxX/maxY) прямокутників, що входять до рамки
+  // групування, на основі вже розрахованих layoutTree координат вузлів.
+  function computeGroupBounds(root, group) {
+    if (!group.nodeIds || !group.nodeIds.length) return null;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    group.nodeIds.forEach(function (id) {
+      var n = findNode(root, id);
+      if (!n) return;
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + n.width);
+      maxY = Math.max(maxY, n.y + n.height);
+    });
+    if (minX === Infinity) return null;
+    return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
+  }
+
+  // Зсуває y-координату всього піддерева на dy (використовується, коли для
+  // заголовка рамки групування, що охоплює найвищі прямокутники, не вистачає
+  // місця над діаграмою — інакше рамка/заголовок обрізались би зверху).
+  function shiftTreeY(node, dy) {
+    node.y += dy;
+    node.children.forEach(function (edge) { shiftTreeY(edge.node, dy); });
+  }
+
   function buildDiagram(sentence, sentenceIndex) {
     var root = sentence.root;
     var svg = document.createElementNS(SVG_NS, 'svg');
     var bounds = layoutTree(root);
-    svg.setAttribute('width', bounds.width);
-    svg.setAttribute('height', bounds.height);
-    svg.setAttribute('viewBox', '0 0 ' + bounds.width + ' ' + bounds.height);
 
     var FRAME_PAD = 10;
     var FRAME_TITLE_EXTRA = 14;
     var HANDLE_R = 6;
     var HANDLE_HIT_R = 15;
-    (sentence.groups || []).forEach(function (group) {
-      if (!group.nodeIds.length) return;
-      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      group.nodeIds.forEach(function (id) {
-        var n = findNode(root, id);
-        if (!n) return;
-        minX = Math.min(minX, n.x);
-        minY = Math.min(minY, n.y);
-        maxX = Math.max(maxX, n.x + n.width);
-        maxY = Math.max(maxY, n.y + n.height);
-      });
-      if (minX === Infinity) return;
+
+    // Якщо рамка з заголовком охоплює найвищі прямокутники діаграми, під
+    // заголовок може не вистачити місця над y=0 — обчислюємо потрібний
+    // зсув усього дерева вниз ЗАЗДАЛЕГІДЬ, щоб заголовок гарантовано
+    // потрапляв у видиму область svg.
+    var groupsList = sentence.groups || [];
+    var minFrameTop = 0;
+    groupsList.forEach(function (group) {
+      var gb = computeGroupBounds(root, group);
+      if (!gb) return;
+      var topPad = FRAME_PAD + (group.title ? FRAME_TITLE_EXTRA : 0);
+      minFrameTop = Math.min(minFrameTop, gb.minY - topPad);
+    });
+    var offsetY = minFrameTop < 0 ? Math.ceil(-minFrameTop) : 0;
+    if (offsetY > 0) shiftTreeY(root, offsetY);
+
+    var totalHeight = bounds.height + offsetY;
+    svg.setAttribute('width', bounds.width);
+    svg.setAttribute('height', totalHeight);
+    svg.setAttribute('viewBox', '0 0 ' + bounds.width + ' ' + totalHeight);
+
+    // Межі рамок груп (у координатах після зсуву) — використовуються нижче,
+    // щоб прив'язати лінію нового прямокутника, доданого «до рамки», до
+    // правого краю самої рамки, а не до конкретного прямокутника всередині.
+    var frameBoundsByGroupId = {};
+
+    groupsList.forEach(function (group) {
+      var gb = computeGroupBounds(root, group);
+      if (!gb) return;
+      var minX = gb.minX, minY = gb.minY, maxX = gb.maxX, maxY = gb.maxY;
       var isSelected = selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === group.id;
       var frameTopPad = FRAME_PAD + (group.title ? FRAME_TITLE_EXTRA : 0);
       var frameX = minX - FRAME_PAD;
       var frameY = minY - frameTopPad;
       var frameW = (maxX - minX) + FRAME_PAD * 2;
       var frameH = (maxY - minY) + frameTopPad + FRAME_PAD;
+      frameBoundsByGroupId[group.id] = { x: frameX, y: frameY, width: frameW, height: frameH };
 
       var frameRect = document.createElementNS(SVG_NS, 'rect');
       frameRect.setAttribute('class', 'group-frame' + (isSelected ? ' selected' : ''));
@@ -991,7 +1032,15 @@
       node.children.forEach(function (edge) {
         var isEdgeSelected = selection.type === 'edge' && selection.sentenceIndex === sentenceIndex &&
           selection.parentId === node.id && selection.childId === edge.node.id;
-        var hit = drawConnector(svg, node, edge.node, edge.lineType, isEdgeSelected);
+        // Якщо прямокутник додано «до рамки» (edge.frameGroupId), лінія
+        // з'єднання малюється не від цього конкретного вузла, а від правого
+        // краю самої рамки — так само, як прямокутник з'єднується з прямокутником.
+        var sourceBox = node;
+        if (edge.frameGroupId && frameBoundsByGroupId[edge.frameGroupId]) {
+          var fb = frameBoundsByGroupId[edge.frameGroupId];
+          sourceBox = { x: fb.x + fb.width, y: fb.y + fb.height / 2, width: 0, height: 0 };
+        }
+        var hit = drawConnector(svg, sourceBox, edge.node, edge.lineType, isEdgeSelected);
         hit.addEventListener('click', function () {
           selectEdge(sentenceIndex, node.id, edge.node.id);
         });
@@ -1380,7 +1429,7 @@
       return;
     }
     if (selection.type === 'group') {
-      targetLabel.textContent = 'рамка групування («✏» — заголовок, «+» — додати прямокутник)';
+      targetLabel.textContent = 'рамка групування («✏» — заголовок, «+» — прямокутник праворуч)';
       return;
     }
     targetLabel.textContent = 'новий термін';
@@ -1446,19 +1495,17 @@
         return;
       }
 
-      // Інакше «Додати» створює новий прямокутник-визначення поруч із
-      // рештою прямокутників рамки (той самий батько) і одразу включає
-      // його до цієї ж рамки групування.
-      var groupParent = findNode(groupSentence.root, group.parentId);
-      if (!groupParent) { clearSelection(); input.value = ''; return; }
-      var newGroupNode = createNode(value);
-      var lastGroupIdx = -1;
-      groupParent.children.forEach(function (edge, idx) {
-        if (group.nodeIds.indexOf(edge.node.id) !== -1) lastGroupIdx = idx;
-      });
-      var insertAt = lastGroupIdx === -1 ? groupParent.children.length : lastGroupIdx + 1;
-      groupParent.children.splice(insertAt, 0, { node: newGroupNode, lineType: currentLineType });
-      group.nodeIds.push(newGroupNode.id);
+      // Інакше «Додати» створює новий прямокутник ЗОВНІ рамки, праворуч,
+      // з'єднаний лінією від самої рамки (як прямокутник з прямокутником).
+      // Технічно новий прямокутник додається як дочірній до останнього
+      // прямокутника всередині рамки (щоб коректно потрапити у наступну
+      // колонку розкладки), а edge.frameGroupId вказує, що лінію при
+      // відображенні треба малювати від краю рамки, а не від цього вузла.
+      var anchorId = group.nodeIds[group.nodeIds.length - 1];
+      var anchorNode = anchorId != null ? findNode(groupSentence.root, anchorId) : null;
+      if (!anchorNode) { clearSelection(); input.value = ''; return; }
+      var newFrameChild = createNode(value);
+      anchorNode.children.push({ node: newFrameChild, lineType: currentLineType, frameGroupId: group.id });
 
       input.value = '';
       renderAll();
