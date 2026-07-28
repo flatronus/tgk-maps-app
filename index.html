@@ -590,7 +590,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.11.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.12.0</span></h1>
       </header>
 
       <div class="panel">
@@ -856,9 +856,49 @@
   // Обчислює позиції (x, y, width, height) усіх прямокутників дерева так, щоб
   // наступний прямокутник малювався ПРАВОРУЧ від попереднього (по рівнях-колонках),
   // а сиблінги одного батька розташовувались один під одним, не перекриваючись.
-  function layoutTree(root) {
+  // Рахує, скільки додаткового вертикального відступу треба зарезервувати
+  // безпосередньо ПЕРЕД першим і ПІСЛЯ останнього прямокутника-члена кожної
+  // рамки групування — саме за рахунок цього резерву сусідні (не члени)
+  // прямокутники автоматично «розступаються», коли рамка займає більше
+  // місця (через власний відступ, вкладеність в іншу рамку чи заголовок), а
+  // не залишаються на місці, накладаючись на розширену рамку — так само, як
+  // це прийнято в програмах для ментальних карт.
+  function computeGroupBoundaryExtras(root, groups) {
+    var beforeMap = {}, afterMap = {};
+    (groups || []).forEach(function (group) {
+      if (!group.nodeIds || !group.nodeIds.length) return;
+      var siblings;
+      if (group.parentId === null) {
+        siblings = [{ node: root }];
+      } else {
+        var parent = findNode(root, group.parentId);
+        siblings = parent ? parent.children : null;
+      }
+      if (!siblings) return;
+      var idxList = [];
+      siblings.forEach(function (edge, idx) {
+        if (group.nodeIds.indexOf(edge.node.id) !== -1) idxList.push(idx);
+      });
+      if (!idxList.length) return;
+      var minIdx = Math.min.apply(null, idxList);
+      var maxIdx = Math.max.apply(null, idxList);
+      var firstId = siblings[minIdx].node.id;
+      var lastId = siblings[maxIdx].node.id;
+      // Консервативна (із запасом) оцінка висоти заголовка, бо на цьому етапі
+      // ще не відома точна ширина рамки для перенесення тексту.
+      var titleAllowance = group.title ? (TITLE_TOP_GAP + TITLE_LINE_HEIGHT * 2 + TITLE_BOTTOM_GAP) : 0;
+      var extraTop = FRAME_PAD + NESTED_FRAME_GAP + titleAllowance;
+      var extraBottom = FRAME_PAD + NESTED_FRAME_GAP;
+      beforeMap[firstId] = Math.max(beforeMap[firstId] || 0, extraTop);
+      afterMap[lastId] = Math.max(afterMap[lastId] || 0, extraBottom);
+    });
+    return { before: beforeMap, after: afterMap };
+  }
+
+  function layoutTree(root, groups) {
     var maxWidthByDepth = [];
     var maxDepth = 0;
+    var boundaryExtras = computeGroupBoundaryExtras(root, groups);
 
     function measure(node, depth) {
       maxDepth = Math.max(maxDepth, depth);
@@ -887,6 +927,10 @@
     var cursorY = ROW_PAD;
 
     function place(node) {
+      // Якщо цей вузол — перший член якоїсь рамки, резервуємо місце зверху
+      // (щоб не наїхати на попередній, не пов'язаний із рамкою прямокутник);
+      // якщо останній — резервуємо місце знизу для наступного.
+      cursorY += (boundaryExtras.before[node.id] || 0);
       node.x = columnX[node.depth];
 
       if (node.children.length === 0) {
@@ -902,6 +946,8 @@
         var lastCenter = last.y + last.height / 2;
         node.y = (firstCenter + lastCenter) / 2 - node.height / 2;
       }
+
+      cursorY += (boundaryExtras.after[node.id] || 0);
     }
 
     place(root);
@@ -1196,58 +1242,71 @@
   function buildDiagram(sentence, sentenceIndex) {
     var root = sentence.root;
     var svg = document.createElementNS(SVG_NS, 'svg');
-    var bounds = layoutTree(root);
+    var groupsList = sentence.groups || [];
+    var bounds = layoutTree(root, groupsList);
     var HANDLE_R = 6;
     var HANDLE_HIT_R = 15;
 
-    var groupsList = sentence.groups || [];
+    // Рахує (за поточними координатами вузлів) для кожної групи: межі вмісту,
+    // потрібну висоту під заголовок і остаточний (з розсуванням вкладених
+    // рамок) прямокутник рамки.
+    function computeGroupMetaAndRects() {
+      var gbList = groupsList.map(function (group) { return computeGroupBounds(root, group); });
+      var meta = groupsList.map(function (group, idx) {
+        var gb = gbList[idx];
+        if (!gb) return null;
+        var frameW = (gb.maxX - gb.minX) + FRAME_PAD * 2;
+        var titleLines = group.title ? wrapTitleText(group.title, frameW - TITLE_PAD_X * 2) : [];
+        var titleAreaHeight = titleLines.length ? (TITLE_TOP_GAP + titleLines.length * TITLE_LINE_HEIGHT + TITLE_BOTTOM_GAP) : 0;
+        var topPad = FRAME_PAD + titleAreaHeight;
+        return { titleLines: titleLines, topPad: topPad };
+      });
+      var rects = expandNestedFrameRects(groupsList.map(function (group, idx) {
+        return computeBaseFrameRect(gbList[idx], meta[idx]);
+      }));
+      return { gbList: gbList, meta: meta, rects: rects };
+    }
 
-    // Крок 1: межі кожної рамки рахуються ЛИШЕ за прямокутниками, що є
-    // членами групи (group.nodeIds) — прямокутники, додані «до рамки»,
-    // навмисно не входять сюди, щоб не впливати на розмір самої рамки.
-    // Одразу вирівнюємо ці «зовнішні» прямокутники по осі рамки.
-    var groupBoundsList = groupsList.map(function (group) {
-      var gb = computeGroupBounds(root, group);
-      if (gb) repositionFrameChildren(root, group, gb.minY + (gb.maxY - gb.minY) / 2, gb.maxX);
-      return gb;
-    });
+    // Вирівнює прямокутники, додані «до рамки» кожної групи, по ПРАВОМУ краю
+    // ОСТАТОЧНОГО (уже з розсуванням вкладених рамок) прямокутника цієї рамки
+    // — а не за сирими межами вмісту — щоб такий прямокутник завжди йшов
+    // услід за рамкою, коли та розширюється вправо.
+    function alignFrameChildren(computed) {
+      groupsList.forEach(function (group, idx) {
+        var gb = computed.gbList[idx];
+        var fr = computed.rects[idx];
+        if (!gb || !fr) return;
+        repositionFrameChildren(root, group, gb.minY + (gb.maxY - gb.minY) / 2, fr.x + fr.width);
+      });
+    }
 
-    // Крок 2: після вирівнювання рахуємо, скільки місця треба зверху під
-    // заголовки рамок (з урахуванням перенесення тексту) і чи вийшли якісь
-    // прямокутники за межі y=0 чи за нижню межу — і зсуваємо/розширюємо
-    // діаграму так, щоб усе було видно.
+    // Крок 1: перший прохід — вирівнюємо «зовнішні» прямокутники за першим
+    // наближенням меж рамок; крок 2: перераховуємо межі (вони могли трохи
+    // вирости, якщо якась рамка охоплює вкладену з таким прямокутником) і
+    // вирівнюємо ще раз за вже точними межами.
+    alignFrameChildren(computeGroupMetaAndRects());
+    var pass2 = computeGroupMetaAndRects();
+    alignFrameChildren(pass2);
+    var groupMeta = pass2.meta;
+
+    // Крок 3: чи вийшли якісь прямокутники або рамки за межі y=0 — і
+    // зсуваємо/розширюємо діаграму так, щоб усе було видно.
     var yRange = computeTreeYRange(root);
     var minFrameTop = Math.min(0, yRange.minY);
-    var groupMeta = groupsList.map(function (group, idx) {
-      var gb = groupBoundsList[idx];
-      if (!gb) return null;
-      var frameW = (gb.maxX - gb.minX) + FRAME_PAD * 2;
-      var titleLines = group.title ? wrapTitleText(group.title, frameW - TITLE_PAD_X * 2) : [];
-      var titleAreaHeight = titleLines.length ? (TITLE_TOP_GAP + titleLines.length * TITLE_LINE_HEIGHT + TITLE_BOTTOM_GAP) : 0;
-      var topPad = FRAME_PAD + titleAreaHeight;
-      return { titleLines: titleLines, topPad: topPad };
-    });
-    // Одразу враховуємо розсування вкладених рамок (щоб зовнішня рамка не
-    // накладала свій заголовок на вкладену) при розрахунку, наскільки
-    // потрібно зсунути/розширити діаграму, щоб усе було видно.
-    var preShiftFrameRects = expandNestedFrameRects(groupsList.map(function (group, idx) {
-      return computeBaseFrameRect(groupBoundsList[idx], groupMeta[idx]);
-    }));
-    preShiftFrameRects.forEach(function (r) {
+    pass2.rects.forEach(function (r) {
       if (r) minFrameTop = Math.min(minFrameTop, r.y);
     });
 
     var offsetY = minFrameTop < 0 ? Math.ceil(-minFrameTop) : 0;
     if (offsetY > 0) shiftTreeY(root, offsetY);
 
-    // Остаточні (уже після зсуву діаграми) межі кожної рамки, з розсуванням
-    // вкладених рамок одна від одної — рахуємо їх ДО встановлення розмірів
-    // SVG, бо розсунута зовнішня рамка може виступати за межі, які раніше
+    // Остаточні (уже після зсуву діаграми) межі кожної рамки — рахуємо їх ДО
+    // встановлення розмірів SVG, бо розсунута зовнішня рамка чи вирівняний
+    // «зовнішній» прямокутник можуть виступати за межі, які раніше
     // визначались лише самими прямокутниками дерева.
-    var finalGroupBoundsList = groupsList.map(function (group) { return computeGroupBounds(root, group); });
-    var finalFrameRects = expandNestedFrameRects(groupsList.map(function (group, idx) {
-      return computeBaseFrameRect(finalGroupBoundsList[idx], groupMeta[idx]);
-    }));
+    var finalComputed = computeGroupMetaAndRects();
+    var finalGroupBoundsList = finalComputed.gbList;
+    var finalFrameRects = finalComputed.rects;
     var frameMaxRight = 0, frameMaxBottom = 0;
     finalFrameRects.forEach(function (r) {
       if (!r) return;
