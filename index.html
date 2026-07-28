@@ -568,7 +568,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.9.3</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.9.4</span></h1>
       </header>
 
       <div class="panel">
@@ -654,6 +654,17 @@
   var frameBtn = document.getElementById('frameBtn');
   var lineStyleButtons = Array.prototype.slice.call(document.querySelectorAll('.line-style-btn'));
   var list = document.getElementById('sentenceList');
+
+  // Клік по порожньому тлу (не по прямокутнику, лінії, рамці чи маркеру
+  // рамки) знімає поточний вибір і завершує режим редагування тексту —
+  // раніше такого обробника не було зовсім, тому кнопка «✏» могла лишатись
+  // підсвіченою після кліку повз усі елементи діаграми.
+  list.addEventListener('click', function (e) {
+    var onInteractive = e.target.closest(
+      '.word-box, .link-hit, .group-frame-hit, .frame-handle-hit, .node-edit-input'
+    );
+    if (!onInteractive) clearSelection();
+  });
   var emptyState = document.getElementById('emptyState');
   var countLabel = document.getElementById('countLabel');
   var targetLabel = document.getElementById('targetLabel');
@@ -1012,6 +1023,17 @@
     node.children.forEach(function (edge) { shiftTreeY(edge.node, dy); });
   }
 
+  // Зсуває x-координату всього піддерева на dx — потрібно, щоб прямокутник,
+  // доданий «до рамки», завжди опинявся ЗОВНІ рамки, праворуч від неї, з
+  // лінією від її краю (як і для будь-якого звичайного прямокутника), а не
+  // прив'язувався до колонки того члена групи, до якого технічно приєднаний
+  // у дереві (інакше він міг би опинитись у тій самій колонці, що й реальні
+  // дочірні прямокутники всередині рамки, і візуально потрапити всередину).
+  function shiftTreeX(node, dx) {
+    node.x += dx;
+    node.children.forEach(function (edge) { shiftTreeX(edge.node, dx); });
+  }
+
   // Знаходить мінімальний/максимальний y (з урахуванням висоти) серед усіх
   // прямокутників дерева — потрібно, щоб знати, чи вистачає місця над/під
   // діаграмою після вирівнювання прямокутників рамки.
@@ -1025,12 +1047,24 @@
     return { minY: minY, maxY: maxY };
   }
 
+  // Максимальний x (з урахуванням ширини) серед усіх прямокутників дерева —
+  // потрібно, щоб розширити ширину діаграми, якщо прямокутник, доданий «до
+  // рамки», примусово зсунуто правіше, ніж передбачала звичайна розкладка
+  // по колонках глибини дерева.
+  function computeTreeXRange(node) {
+    var maxX = node.x + node.width;
+    node.children.forEach(function (edge) {
+      maxX = Math.max(maxX, computeTreeXRange(edge.node));
+    });
+    return maxX;
+  }
+
   // Знаходить усі ребра, додані «до рамки» (edge.frameGroupId === group.id),
   // і вирівнює їх вертикально відносно горизонтальної осі рамки: перший
   // такий прямокутник ставиться точно по центру рамки (пряма лінія), а
   // кілька — розташовуються стовпчиком, відцентрованим на цій же осі (тоді
   // лінії природно стають дугоподібними, як і для звичайних сиблінгів).
-  function repositionFrameChildren(root, group, frameCenterY) {
+  function repositionFrameChildren(root, group, frameCenterY, frameRightX) {
     var edges = [];
     (function walk(node) {
       node.children.forEach(function (edge) {
@@ -1039,6 +1073,18 @@
       });
     })(root);
     if (!edges.length) return;
+
+    // Горизонтально примусово ставимо кожен такий прямокутник одразу за
+    // правим краєм самої рамки (з тим самим відступом, що й між звичайними
+    // колонками), незалежно від того, на яку глибину дерева він технічно
+    // приєднаний — інакше, якщо член групи вже мав власні дочірні
+    // прямокутники в тій самій колонці, новий «зовнішній» прямокутник міг
+    // опинитись візуально всередині рамки.
+    var targetX = frameRightX + LEVEL_GAP;
+    edges.forEach(function (edge) {
+      var n = edge.node;
+      if (n.x !== targetX) shiftTreeX(n, targetX - n.x);
+    });
 
     if (edges.length === 1) {
       var only = edges[0].node;
@@ -1074,7 +1120,7 @@
     // Одразу вирівнюємо ці «зовнішні» прямокутники по осі рамки.
     var groupBoundsList = groupsList.map(function (group) {
       var gb = computeGroupBounds(root, group);
-      if (gb) repositionFrameChildren(root, group, gb.minY + (gb.maxY - gb.minY) / 2);
+      if (gb) repositionFrameChildren(root, group, gb.minY + (gb.maxY - gb.minY) / 2, gb.maxX);
       return gb;
     });
 
@@ -1099,9 +1145,10 @@
     if (offsetY > 0) shiftTreeY(root, offsetY);
 
     var totalHeight = Math.max(bounds.height, yRange.maxY + ROW_PAD) + offsetY;
-    svg.setAttribute('width', bounds.width);
+    var totalWidth = Math.max(bounds.width, computeTreeXRange(root) + ROW_PAD);
+    svg.setAttribute('width', totalWidth);
     svg.setAttribute('height', totalHeight);
-    svg.setAttribute('viewBox', '0 0 ' + bounds.width + ' ' + totalHeight);
+    svg.setAttribute('viewBox', '0 0 ' + totalWidth + ' ' + totalHeight);
 
     // Межі рамок груп (у координатах після зсуву) — використовуються нижче,
     // щоб прив'язати лінію нового прямокутника, доданого «до рамки», до
@@ -1377,6 +1424,10 @@
   // зараз курсор, і розширює/звужує рамку до нього (тримаючи протилежний край нерухомим).
   function onFrameDragMove(e) {
     if (!frameDrag) return;
+    // На планшетах/телефонах без preventDefault браузер під час перетягування
+    // може перехопити жест як прокрутку сторінки (навіть при touch-action:none
+    // на самому маркері) — через це розширення рамки дотиком не спрацьовувало.
+    if (e.cancelable) e.preventDefault();
     var el = document.elementFromPoint(e.clientX, e.clientY);
     var boxEl = el ? el.closest('[data-node-id]') : null;
     if (!boxEl) return;
