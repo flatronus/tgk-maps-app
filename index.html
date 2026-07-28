@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Кресленик речень</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0B2036">
@@ -40,11 +40,29 @@
     color: var(--ink);
     font-family: 'Inter', sans-serif;
     overflow: hidden;
+    /* Забороняє «гумовий» відскок/прокрутку самої сторінки на дотикових
+       пристроях (iPad/Android) — саме через нього верхня панель могла на
+       мить «зникати» з екрана під час прокрутки тла з реченнями, навіть у
+       встановленому як PWA застосунку. */
+    overscroll-behavior: none;
   }
 
   body {
     display: flex;
     flex-direction: column;
+    /* Жорстко прив'язує застосунок до вікна перегляду (а не покладається
+       лише на overflow:hidden, який на iOS/iPadOS не завжди повністю
+       забороняє прокрутку самої сторінки) — гарантує, що верхня й нижня
+       панелі завжди лишаються нерухомими, а прокручується тільки вміст
+       усередині .content-scroll. Відступи safe-area потрібні, щоб панелі не
+       ховались під «чубчиком»/індикатором в повноекранному PWA-режимі.
+    */
+    position: fixed;
+    inset: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
     background-image:
       linear-gradient(var(--grid-line) 1px, transparent 1px),
       linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
@@ -73,6 +91,10 @@
     flex: 1 1 auto;
     overflow: auto;
     position: relative;
+    /* Плавна інерційна прокрутка на iOS і заборона «прокидання» жесту прокрутки
+       з кінця вмісту на саму сторінку (що й ховало верхню панель). */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   .content-scroll .wrap { padding-top: 26px; padding-bottom: 26px; }
 
@@ -568,7 +590,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.10.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.11.0</span></h1>
       </header>
 
       <div class="panel">
@@ -1018,6 +1040,68 @@
     return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
   }
 
+  // Додатковий відступ між межею рамки, що структурно містить іншу
+  // (вкладену) рамку, і межею самої вкладеної рамки — щоб їхні заголовки й
+  // пунктирні межі ніколи не перекривались.
+  var NESTED_FRAME_GAP = 22;
+
+  function rectFullyContains(outer, inner) {
+    return outer.x <= inner.x + 0.01 && outer.y <= inner.y + 0.01 &&
+      (outer.x + outer.width) >= (inner.x + inner.width) - 0.01 &&
+      (outer.y + outer.height) >= (inner.y + inner.height) - 0.01;
+  }
+
+  // Приймає базові прямокутники рамок (за вмістом + звичайний відступ) і
+  // розширює ті з них, що повністю охоплюють інші рамки, додаючи
+  // NESTED_FRAME_GAP навколо кожної вкладеної рамки, яку вони містять —
+  // інакше межі й підписи-заголовки різних (особливо вкладених одна в одну)
+  // рамок можуть торкатись або перекривати одне одного.
+  function expandNestedFrameRects(baseRects) {
+    var rects = baseRects.map(function (r) {
+      return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
+    });
+    var containsList = rects.map(function (rect, idx) {
+      if (!rect) return [];
+      var list = [];
+      rects.forEach(function (other, j) {
+        if (j === idx || !other) return;
+        if (rectFullyContains(rect, other) && !rectFullyContains(other, rect)) list.push(j);
+      });
+      return list;
+    });
+    var order = rects.map(function (_, idx) { return idx; })
+      .filter(function (idx) { return rects[idx]; })
+      .sort(function (a, b) { return containsList[a].length - containsList[b].length; });
+    order.forEach(function (idx) {
+      var kids = containsList[idx];
+      if (!kids.length) return;
+      var rect = rects[idx];
+      var minX = rect.x, minY = rect.y, maxX = rect.x + rect.width, maxY = rect.y + rect.height;
+      kids.forEach(function (kidIdx) {
+        var kid = rects[kidIdx];
+        minX = Math.min(minX, kid.x - NESTED_FRAME_GAP);
+        minY = Math.min(minY, kid.y - NESTED_FRAME_GAP);
+        maxX = Math.max(maxX, kid.x + kid.width + NESTED_FRAME_GAP);
+        maxY = Math.max(maxY, kid.y + kid.height + NESTED_FRAME_GAP);
+      });
+      rect.x = minX; rect.y = minY; rect.width = maxX - minX; rect.height = maxY - minY;
+    });
+    return rects;
+  }
+
+  // Базові (до розсування вкладених) межі рамки за вмістом — спільна логіка
+  // для попереднього (pre-shift) прорахунку відступу діаграми й для
+  // остаточного рендеру.
+  function computeBaseFrameRect(gb, meta) {
+    if (!gb || !meta) return null;
+    return {
+      x: gb.minX - FRAME_PAD,
+      y: gb.minY - meta.topPad,
+      width: (gb.maxX - gb.minX) + FRAME_PAD * 2,
+      height: (gb.maxY - gb.minY) + meta.topPad + FRAME_PAD
+    };
+  }
+
   // Зсуває y-координату всього піддерева на dy (використовується, коли для
   // заголовка рамки групування, що охоплює найвищі прямокутники, не вистачає
   // місця над діаграмою — інакше рамка/заголовок обрізались би зверху; а
@@ -1141,15 +1225,38 @@
       var titleLines = group.title ? wrapTitleText(group.title, frameW - TITLE_PAD_X * 2) : [];
       var titleAreaHeight = titleLines.length ? (TITLE_TOP_GAP + titleLines.length * TITLE_LINE_HEIGHT + TITLE_BOTTOM_GAP) : 0;
       var topPad = FRAME_PAD + titleAreaHeight;
-      minFrameTop = Math.min(minFrameTop, gb.minY - topPad);
       return { titleLines: titleLines, topPad: topPad };
+    });
+    // Одразу враховуємо розсування вкладених рамок (щоб зовнішня рамка не
+    // накладала свій заголовок на вкладену) при розрахунку, наскільки
+    // потрібно зсунути/розширити діаграму, щоб усе було видно.
+    var preShiftFrameRects = expandNestedFrameRects(groupsList.map(function (group, idx) {
+      return computeBaseFrameRect(groupBoundsList[idx], groupMeta[idx]);
+    }));
+    preShiftFrameRects.forEach(function (r) {
+      if (r) minFrameTop = Math.min(minFrameTop, r.y);
     });
 
     var offsetY = minFrameTop < 0 ? Math.ceil(-minFrameTop) : 0;
     if (offsetY > 0) shiftTreeY(root, offsetY);
 
-    var totalHeight = Math.max(bounds.height, yRange.maxY + ROW_PAD) + offsetY;
-    var totalWidth = Math.max(bounds.width, computeTreeXRange(root) + ROW_PAD);
+    // Остаточні (уже після зсуву діаграми) межі кожної рамки, з розсуванням
+    // вкладених рамок одна від одної — рахуємо їх ДО встановлення розмірів
+    // SVG, бо розсунута зовнішня рамка може виступати за межі, які раніше
+    // визначались лише самими прямокутниками дерева.
+    var finalGroupBoundsList = groupsList.map(function (group) { return computeGroupBounds(root, group); });
+    var finalFrameRects = expandNestedFrameRects(groupsList.map(function (group, idx) {
+      return computeBaseFrameRect(finalGroupBoundsList[idx], groupMeta[idx]);
+    }));
+    var frameMaxRight = 0, frameMaxBottom = 0;
+    finalFrameRects.forEach(function (r) {
+      if (!r) return;
+      frameMaxRight = Math.max(frameMaxRight, r.x + r.width);
+      frameMaxBottom = Math.max(frameMaxBottom, r.y + r.height);
+    });
+
+    var totalHeight = Math.max(bounds.height, yRange.maxY + ROW_PAD, frameMaxBottom + ROW_PAD) + offsetY;
+    var totalWidth = Math.max(bounds.width, computeTreeXRange(root) + ROW_PAD, frameMaxRight + ROW_PAD);
     svg.setAttribute('width', totalWidth);
     svg.setAttribute('height', totalHeight);
     svg.setAttribute('viewBox', '0 0 ' + totalWidth + ' ' + totalHeight);
@@ -1160,16 +1267,16 @@
     var frameBoundsByGroupId = {};
 
     groupsList.forEach(function (group, idx) {
-      var gb = computeGroupBounds(root, group);
+      var gb = finalGroupBoundsList[idx];
       if (!gb) return;
       var meta = groupMeta[idx];
-      var minX = gb.minX, minY = gb.minY, maxX = gb.maxX, maxY = gb.maxY;
+      var fr = finalFrameRects[idx];
+      if (!fr) return;
       var isSelected = selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === group.id;
-      var frameTopPad = meta ? meta.topPad : FRAME_PAD;
-      var frameX = minX - FRAME_PAD;
-      var frameY = minY - frameTopPad;
-      var frameW = (maxX - minX) + FRAME_PAD * 2;
-      var frameH = (maxY - minY) + frameTopPad + FRAME_PAD;
+      var frameX = fr.x;
+      var frameY = fr.y;
+      var frameW = fr.width;
+      var frameH = fr.height;
       frameBoundsByGroupId[group.id] = { x: frameX, y: frameY, width: frameW, height: frameH };
 
       var frameRect = document.createElementNS(SVG_NS, 'rect');
