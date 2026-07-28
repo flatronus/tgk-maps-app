@@ -568,7 +568,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.9.2</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.9.3</span></h1>
       </header>
 
       <div class="panel">
@@ -941,6 +941,20 @@
     return { fo: fo, inputEl: inputEl };
   }
 
+  // Обходить піддерево вузла для меж рамки, АЛЕ не заходить у гілки,
+  // з'єднані як «до рамки» (edge.frameGroupId) — такі прямокутники навмисно
+  // створені ЗОВНІ рамки (кнопка «Додати» при вибраній рамці), і не повинні
+  // потрапляти в межі самої рамки, навіть якщо формально є нащадками члена групи.
+  function collectFrameSubtreeIds(node, out) {
+    out = out || [];
+    out.push(node.id);
+    node.children.forEach(function (edge) {
+      if (edge.frameGroupId) return;
+      collectFrameSubtreeIds(edge.node, out);
+    });
+    return out;
+  }
+
   // Обчислює межі (minX/minY/maxX/maxY) прямокутників, що входять до рамки
   // групування, на основі вже розрахованих layoutTree координат вузлів.
   function computeGroupBounds(root, group) {
@@ -950,11 +964,12 @@
     // дочірні прямокутники (усю гілку) — тому вона тепер розширюється не
     // лише вгору/вниз, а й вправо, автоматично захоплюючи дочірні елементи;
     // новий дочірній прямокутник, доданий до вже згрупованого прямокутника,
-    // одразу опиняється в межах рамки без додаткових дій.
+    // одразу опиняється в межах рамки без додаткових дій. Прямокутники,
+    // додані «до рамки» (frameGroupId), у це обчислення не входять.
     group.nodeIds.forEach(function (id) {
       var n = findNode(root, id);
       if (!n) return;
-      collectSubtreeIds(n).forEach(function (descId) {
+      collectFrameSubtreeIds(n).forEach(function (descId) {
         var d = findNode(root, descId);
         if (!d) return;
         minX = Math.min(minX, d.x);
