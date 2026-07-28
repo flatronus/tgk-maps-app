@@ -568,7 +568,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.9.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.9.1</span></h1>
       </header>
 
       <div class="panel">
@@ -967,6 +967,27 @@
     return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
   }
 
+  // Межі рамки, пораховані ЛИШЕ за прямокутниками-членами групи (без їхніх
+  // нащадків) — саме сиблінги завжди стоять в одній колонці по X. Потрібні,
+  // щоб маркери розширення рамки (▲/▼) горизонтально лишались точно над цією
+  // колонкою сиблінгів, навіть якщо сама рамка розширена вправо дочірніми
+  // прямокутниками одного з членів (інакше вертикальне перетягування маркера
+  // вже не проходило б над сусідніми сиблінгами і не могло розширити рамку).
+  function computeGroupMemberBounds(root, group) {
+    if (!group.nodeIds || !group.nodeIds.length) return null;
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    group.nodeIds.forEach(function (id) {
+      var n = findNode(root, id);
+      if (!n) return;
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + n.width);
+      maxY = Math.max(maxY, n.y + n.height);
+    });
+    if (minX === Infinity) return null;
+    return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
+  }
+
   // Зсуває y-координату всього піддерева на dy (використовується, коли для
   // заголовка рамки групування, що охоплює найвищі прямокутники, не вистачає
   // місця над діаграмою — інакше рамка/заголовок обрізались би зверху; а
@@ -1126,7 +1147,12 @@
       }
 
       if (isSelected) {
-        var centerX = frameX + frameW / 2;
+        // Горизонтальна позиція маркерів прив'язана до колонки прямокутників-
+        // членів групи (сиблінгів), а не до центру всієї (можливо розширеної
+        // дочірніми прямокутниками) рамки — інакше вертикальне перетягування
+        // маркера не проходило б над сусідніми сиблінгами.
+        var memberBounds = computeGroupMemberBounds(root, group);
+        var handleCenterX = memberBounds ? (memberBounds.minX + memberBounds.maxX) / 2 : (frameX + frameW / 2);
         [{ y: frameY, handle: 'top' }, { y: frameY + frameH, handle: 'bottom' }].forEach(function (spec) {
           // Окрема, більша за розміром невидима зона для pointerdown — на
           // планшетах/телефонах тонкий видимий маркер (r=6) складно вхопити
@@ -1134,7 +1160,7 @@
           // щоб браузер не перехоплював жест як прокрутку сторінки.
           var handleHit = document.createElementNS(SVG_NS, 'circle');
           handleHit.setAttribute('class', 'frame-handle-hit');
-          handleHit.setAttribute('cx', centerX);
+          handleHit.setAttribute('cx', handleCenterX);
           handleHit.setAttribute('cy', spec.y);
           handleHit.setAttribute('r', HANDLE_HIT_R);
           handleHit.addEventListener('pointerdown', function (e) {
@@ -1149,7 +1175,7 @@
 
           var handleEl = document.createElementNS(SVG_NS, 'circle');
           handleEl.setAttribute('class', 'frame-handle');
-          handleEl.setAttribute('cx', centerX);
+          handleEl.setAttribute('cx', handleCenterX);
           handleEl.setAttribute('cy', spec.y);
           handleEl.setAttribute('r', HANDLE_R);
           svg.appendChild(handleEl);
@@ -1460,17 +1486,29 @@
     var targetSentence = STORAGE.sentences[targetSentenceIndex];
     if (!sentence || !targetSentence) return;
 
-    // Кореневий прямокутник не можна зробити дочірнім іншого прямокутника
-    // (речення завжди має рівно один корінь), але перетягування кореня на
-    // прямокутник ІНШОГО графічного речення тепер переміщує ціле речення
-    // (усю кореневу гілку разом з усіма дочірніми прямокутниками) на місце
-    // цільового речення в списку — так кореневу гілку теж можна перемістити.
+    // Кореневий прямокутник не можна зробити дочірнім вузлом у межах свого ж
+    // речення (речення завжди має рівно один корінь), але перетягування
+    // кореня на прямокутник ІНШОГО графічного речення тепер приєднує ЦІЛЕ
+    // речення (усю кореневу гілку разом з усіма дочірніми прямокутниками й
+    // рамками) як дочірню гілку цього прямокутника — два речення стають
+    // одним, а не просто міняються місцями в списку.
     if (sentence.root.id === draggedNodeId) {
-      if (sentenceIndex === targetSentenceIndex) return; // усередині свого ж речення переміщувати нікуди
-      var insertAt = targetSentenceIndex > sentenceIndex ? targetSentenceIndex - 1 : targetSentenceIndex;
+      if (sentenceIndex === targetSentenceIndex) return; // усередині свого ж речення приєднувати нікуди
+      var targetRootNode = findNode(targetSentence.root, targetNodeId);
+      if (!targetRootNode) return;
+      var rootNode = sentence.root;
+      targetRootNode.children.push({ node: rootNode, lineType: currentLineType });
+      // Рамки колишнього речення й далі посилаються на ті самі id вузлів —
+      // переносимо їх у список рамок цільового речення, тепер уже спільного дерева.
+      if (sentence.groups && sentence.groups.length) {
+        targetSentence.groups = (targetSentence.groups || []).concat(sentence.groups);
+      }
       STORAGE.sentences.splice(sentenceIndex, 1);
-      STORAGE.sentences.splice(insertAt, 0, sentence);
-      if (selection.sentenceIndex === sentenceIndex) selection.sentenceIndex = insertAt;
+      var newTargetIndex = targetSentenceIndex > sentenceIndex ? targetSentenceIndex - 1 : targetSentenceIndex;
+      selection.type = 'node';
+      selection.sentenceIndex = newTargetIndex;
+      selection.nodeId = rootNode.id;
+      if (activeFrame.sentenceIndex === sentenceIndex) { activeFrame.sentenceIndex = null; activeFrame.groupId = null; }
       renderAll();
       return;
     }
