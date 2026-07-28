@@ -568,7 +568,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.9.4</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.10.0</span></h1>
       </header>
 
       <div class="panel">
@@ -952,16 +952,18 @@
     return { fo: fo, inputEl: inputEl };
   }
 
-  // Обходить піддерево вузла для меж рамки, АЛЕ не заходить у гілки,
-  // з'єднані як «до рамки» (edge.frameGroupId) — такі прямокутники навмисно
-  // створені ЗОВНІ рамки (кнопка «Додати» при вибраній рамці), і не повинні
-  // потрапляти в межі самої рамки, навіть якщо формально є нащадками члена групи.
-  function collectFrameSubtreeIds(node, out) {
+  // Обходить піддерево вузла для меж КОНКРЕТНОЇ рамки (groupId), АЛЕ не
+  // заходить у гілки, з'єднані як «до цієї самої рамки» (edge.frameGroupId
+  // === groupId) — такі прямокутники навмисно створені ЗОВНІ саме цієї
+  // рамки. Проте якщо ця гілка технічно є нащадком члена ІНШОЇ (зовнішньої,
+  // охоплюючої) рамки, для меж ТІЄЇ зовнішньої рамки її пропускати не треба —
+  // зовнішня рамка має розширюватись і під такий прямокутник теж.
+  function collectFrameSubtreeIds(node, groupId, out) {
     out = out || [];
     out.push(node.id);
     node.children.forEach(function (edge) {
-      if (edge.frameGroupId) return;
-      collectFrameSubtreeIds(edge.node, out);
+      if (edge.frameGroupId === groupId) return;
+      collectFrameSubtreeIds(edge.node, groupId, out);
     });
     return out;
   }
@@ -975,12 +977,14 @@
     // дочірні прямокутники (усю гілку) — тому вона тепер розширюється не
     // лише вгору/вниз, а й вправо, автоматично захоплюючи дочірні елементи;
     // новий дочірній прямокутник, доданий до вже згрупованого прямокутника,
-    // одразу опиняється в межах рамки без додаткових дій. Прямокутники,
-    // додані «до рамки» (frameGroupId), у це обчислення не входять.
+    // одразу опиняється в межах рамки без додаткових дій. Прямокутник,
+    // доданий «до цієї самої рамки» (frameGroupId === group.id), у це
+    // обчислення не входить — але якщо він доданий «до» ІНШОЇ, внутрішньої
+    // рамки, ця (зовнішня) рамка все одно розшириться під нього.
     group.nodeIds.forEach(function (id) {
       var n = findNode(root, id);
       if (!n) return;
-      collectFrameSubtreeIds(n).forEach(function (descId) {
+      collectFrameSubtreeIds(n, group.id).forEach(function (descId) {
         var d = findNode(root, descId);
         if (!d) return;
         minX = Math.min(minX, d.x);
@@ -1456,9 +1460,18 @@
     if (!sentence) return;
     var group = (sentence.groups || []).filter(function (g) { return g.id === groupId; })[0];
     if (!group) return;
-    var parent = findNode(sentence.root, group.parentId);
-    if (!parent) return;
-    var siblings = parent.children;
+    // Рамка кореня речення (group.parentId === null) не має справжніх
+    // сиблінгів — корінь завжди єдиний, тож список «сусідів» тут віртуальний
+    // з одним елементом: розширити рамку нікуди, але «витягнути» корінь із
+    // рамки перетягуванням маркера за центр (див. нижче) усе одно можливо.
+    var siblings;
+    if (group.parentId === null) {
+      siblings = [{ node: sentence.root }];
+    } else {
+      var parent = findNode(sentence.root, group.parentId);
+      if (!parent) return;
+      siblings = parent.children;
+    }
 
     var hoverIdx = -1;
     for (var i = 0; i < siblings.length; i++) {
@@ -1610,12 +1623,15 @@
     renderAll();
   }
 
-  // Перевіряє, чи вибраний прямокутник можна групувати в рамку (має батька,
-  // тобто не є коренем графічного речення).
+  // Перевіряє, чи вибраний прямокутник можна групувати в рамку. Раніше
+  // корінь речення виключався (бо не має братів/сестер), але тепер рамку
+  // можна застосувати і до кореня — така рамка просто не має куди
+  // розширюватись (сиблінгів у кореня немає), але сама можливість є.
   function canGroupSelectedNode() {
     if (selection.type !== 'node') return false;
     var sentence = STORAGE.sentences[selection.sentenceIndex];
     if (!sentence) return false;
+    if (sentence.root.id === selection.nodeId) return true;
     return !!findParent(sentence.root, selection.nodeId);
   }
 
@@ -1811,9 +1827,13 @@
   frameBtn.addEventListener('click', function () {
     if (!canGroupSelectedNode()) return;
     var sentence = STORAGE.sentences[selection.sentenceIndex];
-    var parentInfo = findParent(sentence.root, selection.nodeId);
     sentence.groups = sentence.groups || [];
-    var group = { id: nextGroupId++, parentId: parentInfo.parent.id, nodeIds: [selection.nodeId] };
+    // Корінь речення не має батька — для нього parentId навмисно null
+    // («рамка кореневого рівня»): сама рамка можлива, просто розширити її
+    // на сиблінгів нікуди, бо корінь завжди єдиний.
+    var isRoot = sentence.root.id === selection.nodeId;
+    var parentId = isRoot ? null : findParent(sentence.root, selection.nodeId).parent.id;
+    var group = { id: nextGroupId++, parentId: parentId, nodeIds: [selection.nodeId] };
     sentence.groups.push(group);
     selectGroup(selection.sentenceIndex, group.id);
   });
