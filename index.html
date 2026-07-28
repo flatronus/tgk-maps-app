@@ -568,7 +568,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.8.4</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.9.0</span></h1>
       </header>
 
       <div class="panel">
@@ -946,13 +946,22 @@
   function computeGroupBounds(root, group) {
     if (!group.nodeIds || !group.nodeIds.length) return null;
     var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    // Рамка охоплює не лише самі прямокутники-члени групи, а й усі їхні
+    // дочірні прямокутники (усю гілку) — тому вона тепер розширюється не
+    // лише вгору/вниз, а й вправо, автоматично захоплюючи дочірні елементи;
+    // новий дочірній прямокутник, доданий до вже згрупованого прямокутника,
+    // одразу опиняється в межах рамки без додаткових дій.
     group.nodeIds.forEach(function (id) {
       var n = findNode(root, id);
       if (!n) return;
-      minX = Math.min(minX, n.x);
-      minY = Math.min(minY, n.y);
-      maxX = Math.max(maxX, n.x + n.width);
-      maxY = Math.max(maxY, n.y + n.height);
+      collectSubtreeIds(n).forEach(function (descId) {
+        var d = findNode(root, descId);
+        if (!d) return;
+        minX = Math.min(minX, d.x);
+        minY = Math.min(minY, d.y);
+        maxX = Math.max(maxX, d.x + d.width);
+        maxY = Math.max(maxY, d.y + d.height);
+      });
     });
     if (minX === Infinity) return null;
     return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
@@ -1331,7 +1340,17 @@
     var boxEl = el ? el.closest('[data-node-id]') : null;
     if (!boxEl) return;
     var hoverNodeId = parseInt(boxEl.getAttribute('data-node-id'), 10);
-    updateFrameBoundary(frameDrag.sentenceIndex, frameDrag.groupId, frameDrag.handle, hoverNodeId);
+    var boxRect = boxEl.getBoundingClientRect();
+    // Якщо курсор перетягнутого маркера пройшов ЗА центр прямокутника, над
+    // яким він зараз перебуває (top — нижче центру, bottom — вище центру),
+    // це сигнал «прибрати цей прямокутник із рамки» — навіть якщо він єдиний,
+    // хто лишився в групі (інакше останній прямокутник ніколи не можна було б
+    // вивести з рамки перетягуванням: звузити рамку нижче 1 елемента раніше
+    // було неможливо).
+    var pastCenter = frameDrag.handle === 'top'
+      ? e.clientY > boxRect.top + boxRect.height / 2
+      : e.clientY < boxRect.top + boxRect.height / 2;
+    updateFrameBoundary(frameDrag.sentenceIndex, frameDrag.groupId, frameDrag.handle, hoverNodeId, pastCenter);
   }
 
   function onFrameDragEnd() {
@@ -1340,7 +1359,7 @@
     window.removeEventListener('pointerup', onFrameDragEnd);
   }
 
-  function updateFrameBoundary(sentenceIndex, groupId, handle, hoverNodeId) {
+  function updateFrameBoundary(sentenceIndex, groupId, handle, hoverNodeId, pastCenter) {
     var sentence = STORAGE.sentences[sentenceIndex];
     if (!sentence) return;
     var group = (sentence.groups || []).filter(function (g) { return g.id === groupId; })[0];
@@ -1362,6 +1381,22 @@
     if (!currentIdx.length) return;
     var minIdx = Math.min.apply(null, currentIdx);
     var maxIdx = Math.max.apply(null, currentIdx);
+
+    // Єдиний прямокутник лишився в рамці, і маркер перетягнуто за його
+    // центр — прибираємо рамку повністю, щоб цей останній прямокутник міг
+    // «вийти» з рамки (звузити рамку нижче 1 елемента інакше неможливо).
+    if (minIdx === maxIdx && hoverIdx === minIdx && pastCenter) {
+      sentence.groups = (sentence.groups || []).filter(function (g) { return g.id !== groupId; });
+      frameDrag = null;
+      window.removeEventListener('pointermove', onFrameDragMove);
+      window.removeEventListener('pointerup', onFrameDragEnd);
+      if (selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === groupId) {
+        clearSelection();
+      } else {
+        renderAll();
+      }
+      return;
+    }
 
     var newMin = minIdx, newMax = maxIdx;
     if (handle === 'top') {
@@ -1424,7 +1459,21 @@
     var sentence = STORAGE.sentences[sentenceIndex];
     var targetSentence = STORAGE.sentences[targetSentenceIndex];
     if (!sentence || !targetSentence) return;
-    if (sentence.root.id === draggedNodeId) return; // корінь речення не можна перепідключити
+
+    // Кореневий прямокутник не можна зробити дочірнім іншого прямокутника
+    // (речення завжди має рівно один корінь), але перетягування кореня на
+    // прямокутник ІНШОГО графічного речення тепер переміщує ціле речення
+    // (усю кореневу гілку разом з усіма дочірніми прямокутниками) на місце
+    // цільового речення в списку — так кореневу гілку теж можна перемістити.
+    if (sentence.root.id === draggedNodeId) {
+      if (sentenceIndex === targetSentenceIndex) return; // усередині свого ж речення переміщувати нікуди
+      var insertAt = targetSentenceIndex > sentenceIndex ? targetSentenceIndex - 1 : targetSentenceIndex;
+      STORAGE.sentences.splice(sentenceIndex, 1);
+      STORAGE.sentences.splice(insertAt, 0, sentence);
+      if (selection.sentenceIndex === sentenceIndex) selection.sentenceIndex = insertAt;
+      renderAll();
+      return;
+    }
 
     var draggedNode = findNode(sentence.root, draggedNodeId);
     var targetNode = findNode(targetSentence.root, targetNodeId);
