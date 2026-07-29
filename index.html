@@ -495,6 +495,12 @@
     stroke: var(--edge-selected);
     fill: rgba(244, 195, 99, 0.1);
   }
+  /* Тимчасовий візуальний сигнал: контур рамки стає червоним точно в момент,
+     коли палець/курсор торкнувся маркера (▲/▼) — щоб було видно, чи взагалі
+     спрацював pointerdown на дотиковому пристрої. */
+  .group-frame.handle-pressed {
+    stroke: #e6453a;
+  }
 
   .group-frame-hit {
     fill: none;
@@ -598,7 +604,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.14.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.14.1</span></h1>
       </header>
 
       <div class="panel">
@@ -1422,6 +1428,7 @@
             e.stopPropagation();
             e.preventDefault();
             frameDrag = { sentenceIndex: sentenceIndex, groupId: group.id, handle: spec.handle };
+            frameRect.classList.add('handle-pressed');
             if (contentScroll) contentScroll.classList.add('frame-drag-active');
             try { handleHit.setPointerCapture(e.pointerId); } catch (err) {}
             window.addEventListener('pointermove', onFrameDragMove);
@@ -1657,6 +1664,8 @@
     window.removeEventListener('pointermove', onFrameDragMove);
     window.removeEventListener('pointerup', onFrameDragEnd);
     window.removeEventListener('pointercancel', onFrameDragEnd);
+    var pressedFrame = list.querySelector('.group-frame.handle-pressed');
+    if (pressedFrame) pressedFrame.classList.remove('handle-pressed');
     var prevTarget = list.querySelector('.word-box.drop-target');
     if (prevTarget) prevTarget.classList.remove('drop-target');
     if (!drag.pending) return;
