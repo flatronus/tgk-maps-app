@@ -598,7 +598,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.1</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.14.0</span></h1>
       </header>
 
       <div class="panel">
@@ -1625,7 +1625,9 @@
     if (e.cancelable) e.preventDefault();
     var el = document.elementFromPoint(e.clientX, e.clientY);
     var boxEl = el ? el.closest('[data-node-id]') : null;
-    if (!boxEl) return;
+    var prevTarget = list.querySelector('.word-box.drop-target');
+    if (prevTarget && prevTarget !== boxEl) prevTarget.classList.remove('drop-target');
+    if (!boxEl) { frameDrag.pending = null; return; }
     var hoverNodeId = parseInt(boxEl.getAttribute('data-node-id'), 10);
     var boxRect = boxEl.getBoundingClientRect();
     // Якщо курсор перетягнутого маркера пройшов ЗА центр прямокутника, над
@@ -1637,15 +1639,28 @@
     var pastCenter = frameDrag.handle === 'top'
       ? e.clientY > boxRect.top + boxRect.height / 2
       : e.clientY < boxRect.top + boxRect.height / 2;
-    updateFrameBoundary(frameDrag.sentenceIndex, frameDrag.groupId, frameDrag.handle, hoverNodeId, pastCenter);
+    // Під час самого перетягування свідомо НЕ перебудовуємо діаграму (це
+    // знищило б і заново створило б увесь DOM, включно з прямокутником-
+    // маркером, за який зараз тримається палець/курсор, — браузер сприйняв
+    // би це як зникнення елемента й скасував би подальше відстеження
+    // перетягування). Лише підсвічуємо прямокутник-ціль, а саму межу рамки
+    // застосовуємо один раз — при відпусканні пальця/кнопки.
+    boxEl.classList.add('drop-target');
+    frameDrag.pending = { hoverNodeId: hoverNodeId, pastCenter: pastCenter };
   }
 
   function onFrameDragEnd() {
+    if (!frameDrag) return;
+    var drag = frameDrag;
     frameDrag = null;
     if (contentScroll) contentScroll.classList.remove('frame-drag-active');
     window.removeEventListener('pointermove', onFrameDragMove);
     window.removeEventListener('pointerup', onFrameDragEnd);
     window.removeEventListener('pointercancel', onFrameDragEnd);
+    var prevTarget = list.querySelector('.word-box.drop-target');
+    if (prevTarget) prevTarget.classList.remove('drop-target');
+    if (!drag.pending) return;
+    updateFrameBoundary(drag.sentenceIndex, drag.groupId, drag.handle, drag.pending.hoverNodeId, drag.pending.pastCenter);
   }
 
   function updateFrameBoundary(sentenceIndex, groupId, handle, hoverNodeId, pastCenter) {
@@ -1685,11 +1700,6 @@
     // «вийти» з рамки (звузити рамку нижче 1 елемента інакше неможливо).
     if (minIdx === maxIdx && hoverIdx === minIdx && pastCenter) {
       sentence.groups = (sentence.groups || []).filter(function (g) { return g.id !== groupId; });
-      frameDrag = null;
-      if (contentScroll) contentScroll.classList.remove('frame-drag-active');
-      window.removeEventListener('pointermove', onFrameDragMove);
-      window.removeEventListener('pointerup', onFrameDragEnd);
-      window.removeEventListener('pointercancel', onFrameDragEnd);
       if (selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === groupId) {
         clearSelection();
       } else {
