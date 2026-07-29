@@ -97,6 +97,14 @@
     overscroll-behavior: contain;
   }
   .content-scroll .wrap { padding-top: 26px; padding-bottom: 26px; }
+  /* На iPadOS/Safari touch-action:none на самому маркері іноді не блокує
+     прокрутку батьківського overflow:auto-контейнера з -webkit-overflow-
+     scrolling:touch (відомий баг WebKit) — тому на час перетягування
+     маркера рамки прокрутку тла вимикаємо примусово через цей клас. */
+  .content-scroll.frame-drag-active {
+    overflow: hidden;
+    touch-action: none;
+  }
 
   .statusbar {
     flex: 0 0 auto;
@@ -590,7 +598,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.12.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.0</span></h1>
       </header>
 
       <div class="panel">
@@ -676,6 +684,7 @@
   var frameBtn = document.getElementById('frameBtn');
   var lineStyleButtons = Array.prototype.slice.call(document.querySelectorAll('.line-style-btn'));
   var list = document.getElementById('sentenceList');
+  var contentScroll = document.getElementById('contentScroll');
 
   // Клік по порожньому тлу (не по прямокутнику, лінії, рамці чи маркеру
   // рамки) знімає поточний вибір і завершує режим редагування тексту —
@@ -1399,9 +1408,11 @@
             e.stopPropagation();
             e.preventDefault();
             frameDrag = { sentenceIndex: sentenceIndex, groupId: group.id, handle: spec.handle };
+            if (contentScroll) contentScroll.classList.add('frame-drag-active');
             try { handleHit.setPointerCapture(e.pointerId); } catch (err) {}
             window.addEventListener('pointermove', onFrameDragMove);
             window.addEventListener('pointerup', onFrameDragEnd);
+            window.addEventListener('pointercancel', onFrameDragEnd);
           });
           svg.appendChild(handleHit);
 
@@ -1617,8 +1628,10 @@
 
   function onFrameDragEnd() {
     frameDrag = null;
+    if (contentScroll) contentScroll.classList.remove('frame-drag-active');
     window.removeEventListener('pointermove', onFrameDragMove);
     window.removeEventListener('pointerup', onFrameDragEnd);
+    window.removeEventListener('pointercancel', onFrameDragEnd);
   }
 
   function updateFrameBoundary(sentenceIndex, groupId, handle, hoverNodeId, pastCenter) {
@@ -1659,8 +1672,10 @@
     if (minIdx === maxIdx && hoverIdx === minIdx && pastCenter) {
       sentence.groups = (sentence.groups || []).filter(function (g) { return g.id !== groupId; });
       frameDrag = null;
+      if (contentScroll) contentScroll.classList.remove('frame-drag-active');
       window.removeEventListener('pointermove', onFrameDragMove);
       window.removeEventListener('pointerup', onFrameDragEnd);
+      window.removeEventListener('pointercancel', onFrameDragEnd);
       if (selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === groupId) {
         clearSelection();
       } else {
