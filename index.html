@@ -598,7 +598,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.1</span></h1>
       </header>
 
       <div class="panel">
@@ -1289,13 +1289,27 @@
       });
     }
 
-    // Крок 1: перший прохід — вирівнюємо «зовнішні» прямокутники за першим
-    // наближенням меж рамок; крок 2: перераховуємо межі (вони могли трохи
-    // вирости, якщо якась рамка охоплює вкладену з таким прямокутником) і
-    // вирівнюємо ще раз за вже точними межами.
-    alignFrameChildren(computeGroupMetaAndRects());
+    // Вирівнюємо «зовнішні» прямокутники, додані «до рамки», у кілька
+    // проходів: кожен прохід перераховує межі рамок за вже зсунутими
+    // координатами й вирівнює ще раз. Двох проходів вистачало для одного
+    // рівня вкладеності, але якщо прямокутник, доданий «до рамки», сам
+    // містить ІНШУ рамку з власним таким прямокутником (вкладений ланцюжок),
+    // двох проходів не досить — межі внутрішньої рамки після зсуву
+    // зовнішньої лишались «застарілими», і її прямокутник міг опинитись
+    // лівіше нового краю, тобто візуально всередині рамки. Тому проходимо,
+    // поки межі рамок не перестануть змінюватись (з розумним запобіжником
+    // проти нескінченного цикла).
+    var prevRectsKey = null;
+    for (var alignPass = 0; alignPass < 8; alignPass++) {
+      var passResult = computeGroupMetaAndRects();
+      alignFrameChildren(passResult);
+      var rectsKey = passResult.rects.map(function (r) {
+        return r ? (Math.round(r.x * 100) + ',' + Math.round(r.width * 100)) : 'x';
+      }).join('|');
+      if (rectsKey === prevRectsKey) break;
+      prevRectsKey = rectsKey;
+    }
     var pass2 = computeGroupMetaAndRects();
-    alignFrameChildren(pass2);
     var groupMeta = pass2.meta;
 
     // Крок 3: чи вийшли якісь прямокутники або рамки за межі y=0 — і
