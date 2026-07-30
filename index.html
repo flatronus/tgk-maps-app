@@ -627,7 +627,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.5</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.6</span></h1>
       </header>
 
       <div class="panel">
@@ -1139,16 +1139,33 @@
   // NESTED_FRAME_GAP навколо кожної вкладеної рамки, яку вони містять —
   // інакше межі й підписи-заголовки різних (особливо вкладених одна в одну)
   // рамок можуть торкатись або перекривати одне одного.
-  function expandNestedFrameRects(baseRects) {
+  function expandNestedFrameRects(baseRects, gbList) {
     var rects = baseRects.map(function (r) {
       return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
     });
+    // Структурну вкладеність (яка рамка «містить» яку) визначаємо за межами
+    // ЛИШЕ вмісту (gb) з відступом FRAME_PAD, БЕЗ місця під заголовок —
+    // інакше додавання/зміна заголовка внутрішньої рамки могла збільшити її
+    // titled-прямокутник настільки, що він переставав вважатись «повністю
+    // вкладеним» у зовнішню (ще нерозширену) рамку, і зовнішня рамка просто
+    // не розширювалась під неї.
+    var plainRects = (gbList || []).map(function (gb) {
+      if (!gb) return null;
+      return {
+        x: gb.minX - FRAME_PAD,
+        y: gb.minY - FRAME_PAD,
+        width: (gb.maxX - gb.minX) + FRAME_PAD * 2,
+        height: (gb.maxY - gb.minY) + FRAME_PAD * 2
+      };
+    });
     var containsList = rects.map(function (rect, idx) {
       if (!rect) return [];
+      var plainRect = plainRects[idx] || rect;
       var list = [];
       rects.forEach(function (other, j) {
         if (j === idx || !other) return;
-        if (rectFullyContains(rect, other) && !rectFullyContains(other, rect)) list.push(j);
+        var otherPlain = plainRects[j] || other;
+        if (rectFullyContains(plainRect, otherPlain) && !rectFullyContains(otherPlain, plainRect)) list.push(j);
       });
       return list;
     });
@@ -1300,7 +1317,7 @@
       });
       var rects = expandNestedFrameRects(groupsList.map(function (group, idx) {
         return computeBaseFrameRect(gbList[idx], meta[idx]);
-      }));
+      }), gbList);
       return { gbList: gbList, meta: meta, rects: rects };
     }
 
