@@ -627,7 +627,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.3</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.4</span></h1>
       </header>
 
       <div class="panel">
@@ -1435,6 +1435,7 @@
           handleHit.addEventListener('pointerdown', function (e) {
             e.stopPropagation();
             e.preventDefault();
+            console.log('[frame-drag] pointerdown', spec.handle, 'pointerType=' + e.pointerType, 'pointerId=' + e.pointerId);
             // Контур рамки одразу фарбується в червоний (--danger) — це
             // сигналізує користувачу, що дотик до маркера зафіксовано.
             // Посилання на root/group/meta та самі SVG-елементи рамки
@@ -1458,9 +1459,15 @@
               pastCenter: false,
               pendingRemove: false
             };
-            try { handleHit.setPointerCapture(e.pointerId); } catch (err) {}
+            try {
+              handleHit.setPointerCapture(e.pointerId);
+              console.log('[frame-drag] setPointerCapture ok');
+            } catch (err) {
+              console.log('[frame-drag] setPointerCapture failed:', err);
+            }
             window.addEventListener('pointermove', onFrameDragMove);
             window.addEventListener('pointerup', onFrameDragEnd);
+            window.addEventListener('pointercancel', onFrameDragCancel);
           });
           svg.appendChild(handleHit);
 
@@ -1710,6 +1717,7 @@
   // застосовується лише в onFrameDragEnd, коли жест завершено.
   function onFrameDragMove(e) {
     if (!frameDrag) return;
+    console.log('[frame-drag] pointermove', e.clientX, e.clientY);
     // На планшетах/телефонах без preventDefault браузер під час перетягування
     // може перехопити жест як прокрутку сторінки (навіть при touch-action:none
     // на самому маркері) — через це розширення рамки дотиком не спрацьовувало.
@@ -1798,16 +1806,37 @@
 
   function onFrameDragEnd() {
     if (!frameDrag) return;
+    console.log('[frame-drag] pointerup');
     var drag = frameDrag;
     frameDrag = null;
     window.removeEventListener('pointermove', onFrameDragMove);
     window.removeEventListener('pointerup', onFrameDragEnd);
+    window.removeEventListener('pointercancel', onFrameDragCancel);
     if (drag.hoverEl) drag.hoverEl.classList.remove('frame-target');
     if (drag.frameRectEl) { drag.frameRectEl.classList.remove('dragging'); drag.frameRectEl.classList.remove('removing'); }
     if (drag.frameHitEl) drag.frameHitEl.classList.remove('dragging');
     if (drag.hoverNodeId != null) {
       updateFrameBoundary(drag.sentenceIndex, drag.groupId, drag.handle, drag.hoverNodeId, drag.pastCenter);
     }
+  }
+
+  function onFrameDragCancel(e) {
+    if (!frameDrag) return;
+    console.log('[frame-drag] pointercancel — браузер перервав жест, зміну межі рамки скасовано');
+    var drag = frameDrag;
+    frameDrag = null;
+    window.removeEventListener('pointermove', onFrameDragMove);
+    window.removeEventListener('pointerup', onFrameDragEnd);
+    window.removeEventListener('pointercancel', onFrameDragCancel);
+    if (drag.hoverEl) drag.hoverEl.classList.remove('frame-target');
+    if (drag.frameRectEl) { drag.frameRectEl.classList.remove('dragging'); drag.frameRectEl.classList.remove('removing'); }
+    if (drag.frameHitEl) drag.frameHitEl.classList.remove('dragging');
+    // На відміну від onFrameDragEnd — зміну межі НЕ застосовуємо: pointercancel
+    // означає, що жест перервано (не завершено користувачем свідомо), тож
+    // рамка повертається до стану до початку перетягування (без renderAll()
+    // геометрія рамки/хіта поверталась би сама, але про всяк випадок
+    // перемальовуємо, щоб гарантовано скинути живий попередній перегляд).
+    renderAll();
   }
 
   function updateFrameBoundary(sentenceIndex, groupId, handle, hoverNodeId, pastCenter) {
