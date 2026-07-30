@@ -97,14 +97,6 @@
     overscroll-behavior: contain;
   }
   .content-scroll .wrap { padding-top: 26px; padding-bottom: 26px; }
-  /* На iPadOS/Safari touch-action:none на самому маркері іноді не блокує
-     прокрутку батьківського overflow:auto-контейнера з -webkit-overflow-
-     scrolling:touch (відомий баг WebKit) — тому на час перетягування
-     маркера рамки прокрутку тла вимикаємо примусово через цей клас. */
-  .content-scroll.frame-drag-active {
-    overflow: hidden;
-    touch-action: none;
-  }
 
   .statusbar {
     flex: 0 0 auto;
@@ -495,9 +487,11 @@
     stroke: var(--edge-selected);
     fill: rgba(244, 195, 99, 0.1);
   }
-  /* Тимчасовий візуальний сигнал: контур рамки стає червоним точно в момент,
-     коли палець/курсор торкнувся маркера (▲/▼) — щоб було видно, чи взагалі
-     спрацював pointerdown на дотиковому пристрої. */
+  /* Візуальний сигнал активного режиму редагування межі рамки: після тапу
+     по маркеру (▲/▼) контур стає червоним і лишається таким, поки не
+     тапнути по маркеру ще раз або не вибрати щось інше — це й є той
+     індикатор, що «контакт відбувся» і зараз можна тапати по сусідніх
+     прямокутниках, щоб розширити/звузити рамку. */
   .group-frame.handle-pressed {
     stroke: #e6453a;
   }
@@ -604,7 +598,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.14.2</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.15.0</span></h1>
       </header>
 
       <div class="panel">
@@ -690,7 +684,6 @@
   var frameBtn = document.getElementById('frameBtn');
   var lineStyleButtons = Array.prototype.slice.call(document.querySelectorAll('.line-style-btn'));
   var list = document.getElementById('sentenceList');
-  var contentScroll = document.getElementById('contentScroll');
 
   // Клік по порожньому тлу (не по прямокутнику, лінії, рамці чи маркеру
   // рамки) знімає поточний вибір і завершує режим редагування тексту —
@@ -733,7 +726,7 @@
   var nextGroupId = 1;
 
   // Стан перетягування маркера рамки (розширення/звуження на сиблінгів вгору/вниз).
-  var frameDrag = null;
+  var frameEditMode = null;
   // Стан перетягування прямокутника терміну/визначення на інший прямокутник
   // для створення нового зв'язку (переприв'язки вузла до нового батька).
   var nodeDrag = null;
@@ -1361,6 +1354,7 @@
       var fr = finalFrameRects[idx];
       if (!fr) return;
       var isSelected = selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === group.id;
+      var isEditingBoundary = !!(frameEditMode && frameEditMode.sentenceIndex === sentenceIndex && frameEditMode.groupId === group.id);
       var frameX = fr.x;
       var frameY = fr.y;
       var frameW = fr.width;
@@ -1368,7 +1362,7 @@
       frameBoundsByGroupId[group.id] = { x: frameX, y: frameY, width: frameW, height: frameH };
 
       var frameRect = document.createElementNS(SVG_NS, 'rect');
-      frameRect.setAttribute('class', 'group-frame' + (isSelected ? ' selected' : ''));
+      frameRect.setAttribute('class', 'group-frame' + (isSelected ? ' selected' : '') + (isEditingBoundary ? ' handle-pressed' : ''));
       frameRect.setAttribute('x', frameX);
       frameRect.setAttribute('y', frameY);
       frameRect.setAttribute('width', frameW);
@@ -1424,16 +1418,24 @@
           handleHit.setAttribute('cx', handleCenterX);
           handleHit.setAttribute('cy', spec.y);
           handleHit.setAttribute('r', HANDLE_HIT_R);
-          handleHit.addEventListener('pointerdown', function (e) {
+          handleHit.addEventListener('click', function (e) {
             e.stopPropagation();
-            e.preventDefault();
-            frameDrag = { sentenceIndex: sentenceIndex, groupId: group.id, handle: spec.handle };
-            frameRect.classList.add('handle-pressed');
-            if (contentScroll) contentScroll.classList.add('frame-drag-active');
-            try { handleHit.setPointerCapture(e.pointerId); } catch (err) {}
-            window.addEventListener('pointermove', onFrameDragMove);
-            window.addEventListener('pointerup', onFrameDragEnd);
-            window.addEventListener('pointercancel', onFrameDragEnd);
+            // Тап по маркеру перемикає режим редагування цієї межі (контур
+            // рамки стає червоним): повторний тап по тому самому маркеру
+            // вимикає режим. Після цього тап по будь-якому сусідньому
+            // прямокутнику (в списку сиблінгів) додає/прибирає його з рамки
+            // з того ж боку — по одному кроку за раз. Свідомо НЕ використовуємо
+            // безперервне перетягування: на дотикових пристроях воно постійно
+            // перебивалось або жестом гортання сторінки, або втратою
+            // pointer capture під час проміжного перерендеру, і ніяк надійно
+            // не запрацьовувало.
+            if (frameEditMode && frameEditMode.sentenceIndex === sentenceIndex &&
+              frameEditMode.groupId === group.id && frameEditMode.handle === spec.handle) {
+              frameEditMode = null;
+            } else {
+              frameEditMode = { sentenceIndex: sentenceIndex, groupId: group.id, handle: spec.handle };
+            }
+            renderAll();
           });
           svg.appendChild(handleHit);
 
@@ -1488,6 +1490,10 @@
       rect.setAttribute('height', node.height);
       rect.setAttribute('rx', 3);
       rect.addEventListener('click', function () {
+        if (frameEditMode && frameEditMode.sentenceIndex === sentenceIndex) {
+          handleFrameEditTap(sentenceIndex, node.id);
+          return;
+        }
         selectNode(sentenceIndex, node.id);
       });
       rect.addEventListener('pointerdown', function (e) {
@@ -1556,6 +1562,7 @@
   }
 
   function selectNode(sentenceIndex, nodeId) {
+    frameEditMode = null;
     editingTarget = null;
     groupTitleEdit = null;
     input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
@@ -1574,6 +1581,7 @@
   }
 
   function selectEdge(sentenceIndex, parentId, childId) {
+    frameEditMode = null;
     editingTarget = null;
     groupTitleEdit = null;
     input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
@@ -1592,6 +1600,7 @@
   }
 
   function clearSelection() {
+    frameEditMode = null;
     editingTarget = null;
     groupTitleEdit = null;
     input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
@@ -1611,6 +1620,9 @@
       clearSelection();
       return;
     }
+    if (!(frameEditMode && frameEditMode.sentenceIndex === sentenceIndex && frameEditMode.groupId === groupId)) {
+      frameEditMode = null;
+    }
     groupTitleEdit = null;
     input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
     selection.type = 'group';
@@ -1622,54 +1634,15 @@
     renderAll();
   }
 
-  // Перетягування маркера рамки (верх/низ): визначає, над яким прямокутником
-  // зараз курсор, і розширює/звужує рамку до нього (тримаючи протилежний край нерухомим).
-  function onFrameDragMove(e) {
-    if (!frameDrag) return;
-    // На планшетах/телефонах без preventDefault браузер під час перетягування
-    // може перехопити жест як прокрутку сторінки (навіть при touch-action:none
-    // на самому маркері) — через це розширення рамки дотиком не спрацьовувало.
-    if (e.cancelable) e.preventDefault();
-    var el = document.elementFromPoint(e.clientX, e.clientY);
-    var boxEl = el ? el.closest('[data-node-id]') : null;
-    var prevTarget = list.querySelector('.word-box.drop-target');
-    if (prevTarget && prevTarget !== boxEl) prevTarget.classList.remove('drop-target');
-    if (!boxEl) { frameDrag.pending = null; return; }
-    var hoverNodeId = parseInt(boxEl.getAttribute('data-node-id'), 10);
-    var boxRect = boxEl.getBoundingClientRect();
-    // Якщо курсор перетягнутого маркера пройшов ЗА центр прямокутника, над
-    // яким він зараз перебуває (top — нижче центру, bottom — вище центру),
-    // це сигнал «прибрати цей прямокутник із рамки» — навіть якщо він єдиний,
-    // хто лишився в групі (інакше останній прямокутник ніколи не можна було б
-    // вивести з рамки перетягуванням: звузити рамку нижче 1 елемента раніше
-    // було неможливо).
-    var pastCenter = frameDrag.handle === 'top'
-      ? e.clientY > boxRect.top + boxRect.height / 2
-      : e.clientY < boxRect.top + boxRect.height / 2;
-    // Під час самого перетягування свідомо НЕ перебудовуємо діаграму (це
-    // знищило б і заново створило б увесь DOM, включно з прямокутником-
-    // маркером, за який зараз тримається палець/курсор, — браузер сприйняв
-    // би це як зникнення елемента й скасував би подальше відстеження
-    // перетягування). Лише підсвічуємо прямокутник-ціль, а саму межу рамки
-    // застосовуємо один раз — при відпусканні пальця/кнопки.
-    boxEl.classList.add('drop-target');
-    frameDrag.pending = { hoverNodeId: hoverNodeId, pastCenter: pastCenter };
-  }
-
-  function onFrameDragEnd() {
-    if (!frameDrag) return;
-    var drag = frameDrag;
-    frameDrag = null;
-    if (contentScroll) contentScroll.classList.remove('frame-drag-active');
-    window.removeEventListener('pointermove', onFrameDragMove);
-    window.removeEventListener('pointerup', onFrameDragEnd);
-    window.removeEventListener('pointercancel', onFrameDragEnd);
-    var pressedFrame = list.querySelector('.group-frame.handle-pressed');
-    if (pressedFrame) pressedFrame.classList.remove('handle-pressed');
-    var prevTarget = list.querySelector('.word-box.drop-target');
-    if (prevTarget) prevTarget.classList.remove('drop-target');
-    if (!drag.pending) return;
-    updateFrameBoundary(drag.sentenceIndex, drag.groupId, drag.handle, drag.pending.hoverNodeId, drag.pending.pastCenter);
+  // Тап по прямокутнику під час активного режиму редагування межі рамки
+  // (після тапу по маркеру ▲/▼): розширює/звужує рамку до цього прямокутника,
+  // тримаючи протилежний край нерухомим. pastCenter завжди true — це значення
+  // впливає лише на випадок, коли в рамці лишився один-єдиний прямокутник і
+  // саме його ж і тапнули (тоді рамка знімається повністю), в усіх інших
+  // випадках воно не використовується.
+  function handleFrameEditTap(sentenceIndex, nodeId) {
+    if (!frameEditMode || frameEditMode.sentenceIndex !== sentenceIndex) return;
+    updateFrameBoundary(sentenceIndex, frameEditMode.groupId, frameEditMode.handle, nodeId, true);
   }
 
   function updateFrameBoundary(sentenceIndex, groupId, handle, hoverNodeId, pastCenter) {
@@ -1709,6 +1682,9 @@
     // «вийти» з рамки (звузити рамку нижче 1 елемента інакше неможливо).
     if (minIdx === maxIdx && hoverIdx === minIdx && pastCenter) {
       sentence.groups = (sentence.groups || []).filter(function (g) { return g.id !== groupId; });
+      if (frameEditMode && frameEditMode.sentenceIndex === sentenceIndex && frameEditMode.groupId === groupId) {
+        frameEditMode = null;
+      }
       if (selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === groupId) {
         clearSelection();
       } else {
