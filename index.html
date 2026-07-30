@@ -487,14 +487,6 @@
     stroke: var(--edge-selected);
     fill: rgba(244, 195, 99, 0.1);
   }
-  /* Візуальний сигнал активного режиму редагування межі рамки: після тапу
-     по маркеру (▲/▼) контур стає червоним і лишається таким, поки не
-     тапнути по маркеру ще раз або не вибрати щось інше — це й є той
-     індикатор, що «контакт відбувся» і зараз можна тапати по сусідніх
-     прямокутниках, щоб розширити/звузити рамку. */
-  .group-frame.handle-pressed {
-    stroke: #e6453a;
-  }
 
   .group-frame-hit {
     fill: none;
@@ -598,7 +590,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.15.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.12.0</span></h1>
       </header>
 
       <div class="panel">
@@ -726,7 +718,7 @@
   var nextGroupId = 1;
 
   // Стан перетягування маркера рамки (розширення/звуження на сиблінгів вгору/вниз).
-  var frameEditMode = null;
+  var frameDrag = null;
   // Стан перетягування прямокутника терміну/визначення на інший прямокутник
   // для створення нового зв'язку (переприв'язки вузла до нового батька).
   var nodeDrag = null;
@@ -1288,27 +1280,13 @@
       });
     }
 
-    // Вирівнюємо «зовнішні» прямокутники, додані «до рамки», у кілька
-    // проходів: кожен прохід перераховує межі рамок за вже зсунутими
-    // координатами й вирівнює ще раз. Двох проходів вистачало для одного
-    // рівня вкладеності, але якщо прямокутник, доданий «до рамки», сам
-    // містить ІНШУ рамку з власним таким прямокутником (вкладений ланцюжок),
-    // двох проходів не досить — межі внутрішньої рамки після зсуву
-    // зовнішньої лишались «застарілими», і її прямокутник міг опинитись
-    // лівіше нового краю, тобто візуально всередині рамки. Тому проходимо,
-    // поки межі рамок не перестануть змінюватись (з розумним запобіжником
-    // проти нескінченного цикла).
-    var prevRectsKey = null;
-    for (var alignPass = 0; alignPass < 8; alignPass++) {
-      var passResult = computeGroupMetaAndRects();
-      alignFrameChildren(passResult);
-      var rectsKey = passResult.rects.map(function (r) {
-        return r ? (Math.round(r.x * 100) + ',' + Math.round(r.width * 100)) : 'x';
-      }).join('|');
-      if (rectsKey === prevRectsKey) break;
-      prevRectsKey = rectsKey;
-    }
+    // Крок 1: перший прохід — вирівнюємо «зовнішні» прямокутники за першим
+    // наближенням меж рамок; крок 2: перераховуємо межі (вони могли трохи
+    // вирости, якщо якась рамка охоплює вкладену з таким прямокутником) і
+    // вирівнюємо ще раз за вже точними межами.
+    alignFrameChildren(computeGroupMetaAndRects());
     var pass2 = computeGroupMetaAndRects();
+    alignFrameChildren(pass2);
     var groupMeta = pass2.meta;
 
     // Крок 3: чи вийшли якісь прямокутники або рамки за межі y=0 — і
@@ -1354,7 +1332,6 @@
       var fr = finalFrameRects[idx];
       if (!fr) return;
       var isSelected = selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === group.id;
-      var isEditingBoundary = !!(frameEditMode && frameEditMode.sentenceIndex === sentenceIndex && frameEditMode.groupId === group.id);
       var frameX = fr.x;
       var frameY = fr.y;
       var frameW = fr.width;
@@ -1362,7 +1339,7 @@
       frameBoundsByGroupId[group.id] = { x: frameX, y: frameY, width: frameW, height: frameH };
 
       var frameRect = document.createElementNS(SVG_NS, 'rect');
-      frameRect.setAttribute('class', 'group-frame' + (isSelected ? ' selected' : '') + (isEditingBoundary ? ' handle-pressed' : ''));
+      frameRect.setAttribute('class', 'group-frame' + (isSelected ? ' selected' : ''));
       frameRect.setAttribute('x', frameX);
       frameRect.setAttribute('y', frameY);
       frameRect.setAttribute('width', frameW);
@@ -1418,24 +1395,13 @@
           handleHit.setAttribute('cx', handleCenterX);
           handleHit.setAttribute('cy', spec.y);
           handleHit.setAttribute('r', HANDLE_HIT_R);
-          handleHit.addEventListener('click', function (e) {
+          handleHit.addEventListener('pointerdown', function (e) {
             e.stopPropagation();
-            // Тап по маркеру перемикає режим редагування цієї межі (контур
-            // рамки стає червоним): повторний тап по тому самому маркеру
-            // вимикає режим. Після цього тап по будь-якому сусідньому
-            // прямокутнику (в списку сиблінгів) додає/прибирає його з рамки
-            // з того ж боку — по одному кроку за раз. Свідомо НЕ використовуємо
-            // безперервне перетягування: на дотикових пристроях воно постійно
-            // перебивалось або жестом гортання сторінки, або втратою
-            // pointer capture під час проміжного перерендеру, і ніяк надійно
-            // не запрацьовувало.
-            if (frameEditMode && frameEditMode.sentenceIndex === sentenceIndex &&
-              frameEditMode.groupId === group.id && frameEditMode.handle === spec.handle) {
-              frameEditMode = null;
-            } else {
-              frameEditMode = { sentenceIndex: sentenceIndex, groupId: group.id, handle: spec.handle };
-            }
-            renderAll();
+            e.preventDefault();
+            frameDrag = { sentenceIndex: sentenceIndex, groupId: group.id, handle: spec.handle };
+            try { handleHit.setPointerCapture(e.pointerId); } catch (err) {}
+            window.addEventListener('pointermove', onFrameDragMove);
+            window.addEventListener('pointerup', onFrameDragEnd);
           });
           svg.appendChild(handleHit);
 
@@ -1490,10 +1456,6 @@
       rect.setAttribute('height', node.height);
       rect.setAttribute('rx', 3);
       rect.addEventListener('click', function () {
-        if (frameEditMode && frameEditMode.sentenceIndex === sentenceIndex) {
-          handleFrameEditTap(sentenceIndex, node.id);
-          return;
-        }
         selectNode(sentenceIndex, node.id);
       });
       rect.addEventListener('pointerdown', function (e) {
@@ -1562,7 +1524,6 @@
   }
 
   function selectNode(sentenceIndex, nodeId) {
-    frameEditMode = null;
     editingTarget = null;
     groupTitleEdit = null;
     input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
@@ -1581,7 +1542,6 @@
   }
 
   function selectEdge(sentenceIndex, parentId, childId) {
-    frameEditMode = null;
     editingTarget = null;
     groupTitleEdit = null;
     input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
@@ -1600,7 +1560,6 @@
   }
 
   function clearSelection() {
-    frameEditMode = null;
     editingTarget = null;
     groupTitleEdit = null;
     input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
@@ -1620,9 +1579,6 @@
       clearSelection();
       return;
     }
-    if (!(frameEditMode && frameEditMode.sentenceIndex === sentenceIndex && frameEditMode.groupId === groupId)) {
-      frameEditMode = null;
-    }
     groupTitleEdit = null;
     input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
     selection.type = 'group';
@@ -1634,15 +1590,35 @@
     renderAll();
   }
 
-  // Тап по прямокутнику під час активного режиму редагування межі рамки
-  // (після тапу по маркеру ▲/▼): розширює/звужує рамку до цього прямокутника,
-  // тримаючи протилежний край нерухомим. pastCenter завжди true — це значення
-  // впливає лише на випадок, коли в рамці лишився один-єдиний прямокутник і
-  // саме його ж і тапнули (тоді рамка знімається повністю), в усіх інших
-  // випадках воно не використовується.
-  function handleFrameEditTap(sentenceIndex, nodeId) {
-    if (!frameEditMode || frameEditMode.sentenceIndex !== sentenceIndex) return;
-    updateFrameBoundary(sentenceIndex, frameEditMode.groupId, frameEditMode.handle, nodeId, true);
+  // Перетягування маркера рамки (верх/низ): визначає, над яким прямокутником
+  // зараз курсор, і розширює/звужує рамку до нього (тримаючи протилежний край нерухомим).
+  function onFrameDragMove(e) {
+    if (!frameDrag) return;
+    // На планшетах/телефонах без preventDefault браузер під час перетягування
+    // може перехопити жест як прокрутку сторінки (навіть при touch-action:none
+    // на самому маркері) — через це розширення рамки дотиком не спрацьовувало.
+    if (e.cancelable) e.preventDefault();
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var boxEl = el ? el.closest('[data-node-id]') : null;
+    if (!boxEl) return;
+    var hoverNodeId = parseInt(boxEl.getAttribute('data-node-id'), 10);
+    var boxRect = boxEl.getBoundingClientRect();
+    // Якщо курсор перетягнутого маркера пройшов ЗА центр прямокутника, над
+    // яким він зараз перебуває (top — нижче центру, bottom — вище центру),
+    // це сигнал «прибрати цей прямокутник із рамки» — навіть якщо він єдиний,
+    // хто лишився в групі (інакше останній прямокутник ніколи не можна було б
+    // вивести з рамки перетягуванням: звузити рамку нижче 1 елемента раніше
+    // було неможливо).
+    var pastCenter = frameDrag.handle === 'top'
+      ? e.clientY > boxRect.top + boxRect.height / 2
+      : e.clientY < boxRect.top + boxRect.height / 2;
+    updateFrameBoundary(frameDrag.sentenceIndex, frameDrag.groupId, frameDrag.handle, hoverNodeId, pastCenter);
+  }
+
+  function onFrameDragEnd() {
+    frameDrag = null;
+    window.removeEventListener('pointermove', onFrameDragMove);
+    window.removeEventListener('pointerup', onFrameDragEnd);
   }
 
   function updateFrameBoundary(sentenceIndex, groupId, handle, hoverNodeId, pastCenter) {
@@ -1682,9 +1658,9 @@
     // «вийти» з рамки (звузити рамку нижче 1 елемента інакше неможливо).
     if (minIdx === maxIdx && hoverIdx === minIdx && pastCenter) {
       sentence.groups = (sentence.groups || []).filter(function (g) { return g.id !== groupId; });
-      if (frameEditMode && frameEditMode.sentenceIndex === sentenceIndex && frameEditMode.groupId === groupId) {
-        frameEditMode = null;
-      }
+      frameDrag = null;
+      window.removeEventListener('pointermove', onFrameDragMove);
+      window.removeEventListener('pointerup', onFrameDragEnd);
       if (selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === groupId) {
         clearSelection();
       } else {
@@ -2148,19 +2124,6 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     navigator.serviceWorker.register('sw.js').catch(function (err) {
       console.warn('Не вдалося зареєструвати service worker:', err);
     });
-  });
-  // Коли з'являється нова версія service worker (після оновлення застосунку),
-  // вона одразу перехоплює контроль (skipWaiting + clients.claim у sw.js),
-  // але JS у вже відкритій вкладці лишається СТАРИМ, поки сторінку не
-  // перезавантажити вручну. Це неодноразово призводило до плутанини під час
-  // тестування виправлень (людина бачить старий, ще не виправлений код).
-  // Тому перезавантажуємо сторінку автоматично один раз одразу після зміни
-  // контролера.
-  var swReloaded = false;
-  navigator.serviceWorker.addEventListener('controllerchange', function () {
-    if (swReloaded) return;
-    swReloaded = true;
-    location.reload();
   });
 }
 </script>
