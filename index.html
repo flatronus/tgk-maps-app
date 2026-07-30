@@ -627,7 +627,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.4</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.5</span></h1>
       </header>
 
       <div class="panel">
@@ -1468,6 +1468,14 @@
             window.addEventListener('pointermove', onFrameDragMove);
             window.addEventListener('pointerup', onFrameDragEnd);
             window.addEventListener('pointercancel', onFrameDragCancel);
+            // touch-action:none на самому SVG-маркері (.frame-handle-hit) не
+            // завжди достатній — на реальних дотикових пристроях браузер
+            // усе одно може вирішити, що це жест прокрутки, і скасувати
+            // pointer (pointercancel) після кількох пікселів руху. Пряме
+            // preventDefault() на нативній події touchmove (обов'язково з
+            // passive:false, інакше preventDefault буде проігноровано)
+            // надійно блокує прокрутку незалежно від touch-action.
+            window.addEventListener('touchmove', blockScrollDuringFrameDrag, { passive: false });
           });
           svg.appendChild(handleHit);
 
@@ -1715,6 +1723,15 @@
   // напряму оновлює геометрію самої рамки (живий попередній перегляд) і
   // підсвічує прямокутник, який буде захоплено в рамку. Фактична зміна межі
   // застосовується лише в onFrameDragEnd, коли жест завершено.
+  // Примусово блокує нативну прокрутку сторінки/канви на нативній події
+  // touchmove, поки триває перетягування маркера рамки (frameDrag активний).
+  // Слухач ОБОВ'ЯЗКОВО не passive — інакше preventDefault() ігнорується
+  // браузером і прокрутка все одно почнеться.
+  function blockScrollDuringFrameDrag(e) {
+    if (!frameDrag) return;
+    if (e.cancelable) e.preventDefault();
+  }
+
   function onFrameDragMove(e) {
     if (!frameDrag) return;
     console.log('[frame-drag] pointermove', e.clientX, e.clientY);
@@ -1812,6 +1829,7 @@
     window.removeEventListener('pointermove', onFrameDragMove);
     window.removeEventListener('pointerup', onFrameDragEnd);
     window.removeEventListener('pointercancel', onFrameDragCancel);
+    window.removeEventListener('touchmove', blockScrollDuringFrameDrag);
     if (drag.hoverEl) drag.hoverEl.classList.remove('frame-target');
     if (drag.frameRectEl) { drag.frameRectEl.classList.remove('dragging'); drag.frameRectEl.classList.remove('removing'); }
     if (drag.frameHitEl) drag.frameHitEl.classList.remove('dragging');
@@ -1828,6 +1846,7 @@
     window.removeEventListener('pointermove', onFrameDragMove);
     window.removeEventListener('pointerup', onFrameDragEnd);
     window.removeEventListener('pointercancel', onFrameDragCancel);
+    window.removeEventListener('touchmove', blockScrollDuringFrameDrag);
     if (drag.hoverEl) drag.hoverEl.classList.remove('frame-target');
     if (drag.frameRectEl) { drag.frameRectEl.classList.remove('dragging'); drag.frameRectEl.classList.remove('removing'); }
     if (drag.frameHitEl) drag.frameHitEl.classList.remove('dragging');
