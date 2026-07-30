@@ -45,6 +45,16 @@
        мить «зникати» з екрана під час прокрутки тла з реченнями, навіть у
        встановленому як PWA застосунку. */
     overscroll-behavior: none;
+    /* Тло/канва застосунку не повинно виділятись як текст під час
+       перетягування пальцем (напр. маркера рамки): без цього браузер
+       конкурує власним жестом «виділення тексту по дотику» з обробкою
+       дотику в JS, через що і виділявся весь текст на панелях, і власна
+       підсвітка прямокутника під час перетягування не встигала спрацювати.
+       Реальні поля вводу (#sentenceInput, .node-edit-input) нижче явно
+       повертають собі можливість виділення. */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 
   body {
@@ -440,6 +450,13 @@
     pointer-events: none;
   }
 
+  #sentenceInput,
+  .node-edit-input {
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-touch-callout: default;
+  }
+
   .node-edit-input {
     width: 100%;
     height: 100%;
@@ -610,7 +627,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.1</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.2</span></h1>
       </header>
 
       <div class="panel">
