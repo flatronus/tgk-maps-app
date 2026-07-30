@@ -417,6 +417,9 @@
     text-anchor: middle;
     cursor: pointer;
     pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 
   .note-text {
@@ -426,6 +429,9 @@
     dominant-baseline: middle;
     text-anchor: middle;
     pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 
   .note-divider {
@@ -488,6 +494,14 @@
     fill: rgba(244, 195, 99, 0.1);
   }
 
+  .group-frame.dragging {
+    stroke: var(--danger);
+  }
+
+  .group-frame.removing {
+    opacity: 0.35;
+  }
+
   .group-frame-hit {
     fill: none;
     stroke: transparent;
@@ -525,6 +539,12 @@
     stroke: var(--edge-selected);
     stroke-width: 2.6;
     fill: rgba(244, 195, 99, 0.18);
+  }
+
+  .word-box.frame-target {
+    stroke: var(--danger);
+    stroke-width: 2.6;
+    fill: rgba(224, 135, 107, 0.16);
   }
 
   .modal-overlay {
@@ -590,7 +610,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.12.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.0</span></h1>
       </header>
 
       <div class="panel">
@@ -1398,7 +1418,29 @@
           handleHit.addEventListener('pointerdown', function (e) {
             e.stopPropagation();
             e.preventDefault();
-            frameDrag = { sentenceIndex: sentenceIndex, groupId: group.id, handle: spec.handle };
+            // Контур рамки одразу фарбується в червоний (--danger) — це
+            // сигналізує користувачу, що дотик до маркера зафіксовано.
+            // Посилання на root/group/meta та самі SVG-елементи рамки
+            // зберігаються в frameDrag, щоб під час руху пальця можна було
+            // напряму оновлювати їхню геометрію (без renderAll() — виклик
+            // renderAll() під час активного дотику знищує DOM-елемент,
+            // захоплений пальцем, і зриває жест pointercancel'ом).
+            frameRect.classList.add('dragging');
+            frameHit.classList.add('dragging');
+            frameDrag = {
+              sentenceIndex: sentenceIndex,
+              groupId: group.id,
+              handle: spec.handle,
+              root: root,
+              group: group,
+              meta: meta,
+              frameRectEl: frameRect,
+              frameHitEl: frameHit,
+              hoverEl: null,
+              hoverNodeId: null,
+              pastCenter: false,
+              pendingRemove: false
+            };
             try { handleHit.setPointerCapture(e.pointerId); } catch (err) {}
             window.addEventListener('pointermove', onFrameDragMove);
             window.addEventListener('pointerup', onFrameDragEnd);
@@ -1590,8 +1632,65 @@
     renderAll();
   }
 
-  // Перетягування маркера рамки (верх/низ): визначає, над яким прямокутником
-  // зараз курсор, і розширює/звужує рамку до нього (тримаючи протилежний край нерухомим).
+  // Чиста функція (без побічних ефектів): визначає, чи є hoverNodeId
+  // сиблінгом рамки group, і якщо так — яким має стати новий список
+  // nodeIds (або сигнал remove:true, якщо єдиний прямокутник рамки
+  // перетягнуто за його центр). Використовується і для живого попереднього
+  // перегляду під час руху пальця (onFrameDragMove), і для остаточного
+  // застосування зміни при відпусканні (onFrameDragEnd/updateFrameBoundary).
+  function computeFrameDragTarget(root, group, handle, hoverNodeId, pastCenter) {
+    // Рамка кореня речення (group.parentId === null) не має справжніх
+    // сиблінгів — корінь завжди єдиний, тож список «сусідів» тут віртуальний
+    // з одним елементом: розширити рамку нікуди, але «витягнути» корінь із
+    // рамки перетягуванням маркера за центр (див. нижче) усе одно можливо.
+    var siblings;
+    if (group.parentId === null) {
+      siblings = [{ node: root }];
+    } else {
+      var parent = findNode(root, group.parentId);
+      if (!parent) return null;
+      siblings = parent.children;
+    }
+
+    var hoverIdx = -1;
+    for (var i = 0; i < siblings.length; i++) {
+      if (siblings[i].node.id === hoverNodeId) { hoverIdx = i; break; }
+    }
+    if (hoverIdx === -1) return null; // не сиблінг цього батька — ігноруємо
+
+    var currentIdx = [];
+    siblings.forEach(function (edge, idx) {
+      if (group.nodeIds.indexOf(edge.node.id) !== -1) currentIdx.push(idx);
+    });
+    if (!currentIdx.length) return null;
+    var minIdx = Math.min.apply(null, currentIdx);
+    var maxIdx = Math.max.apply(null, currentIdx);
+
+    // Єдиний прямокутник лишився в рамці, і маркер перетягнуто за його
+    // центр — сигнал прибрати рамку повністю, щоб цей останній прямокутник
+    // міг «вийти» з рамки (звузити рамку нижче 1 елемента інакше неможливо).
+    if (minIdx === maxIdx && hoverIdx === minIdx && pastCenter) {
+      return { remove: true, siblings: siblings };
+    }
+
+    var newMin = minIdx, newMax = maxIdx;
+    if (handle === 'top') {
+      newMin = Math.min(hoverIdx, maxIdx);
+    } else {
+      newMax = Math.max(hoverIdx, minIdx);
+    }
+
+    var newIds = [];
+    for (var j = newMin; j <= newMax; j++) newIds.push(siblings[j].node.id);
+    return { newIds: newIds, siblings: siblings };
+  }
+
+  // Перетягування маркера рамки (верх/низ): під час руху пальця/курсора НЕ
+  // викликає renderAll() (це знищувало б DOM-елемент, захоплений пальцем, і
+  // зривало жест pointercancel'ом на дотикових пристроях) — замість цього
+  // напряму оновлює геометрію самої рамки (живий попередній перегляд) і
+  // підсвічує прямокутник, який буде захоплено в рамку. Фактична зміна межі
+  // застосовується лише в onFrameDragEnd, коли жест завершено.
   function onFrameDragMove(e) {
     if (!frameDrag) return;
     // На планшетах/телефонах без preventDefault браузер під час перетягування
@@ -1612,13 +1711,68 @@
     var pastCenter = frameDrag.handle === 'top'
       ? e.clientY > boxRect.top + boxRect.height / 2
       : e.clientY < boxRect.top + boxRect.height / 2;
-    updateFrameBoundary(frameDrag.sentenceIndex, frameDrag.groupId, frameDrag.handle, hoverNodeId, pastCenter);
+
+    var target = computeFrameDragTarget(frameDrag.root, frameDrag.group, frameDrag.handle, hoverNodeId, pastCenter);
+
+    // Підсвітка прямокутника, над яким зараз палець/курсор, — лише якщо він
+    // є дійсним сиблінгом рамки (валідна ціль).
+    if (frameDrag.hoverEl && frameDrag.hoverEl !== boxEl) {
+      frameDrag.hoverEl.classList.remove('frame-target');
+      frameDrag.hoverEl = null;
+    }
+    if (target && boxEl) {
+      boxEl.classList.add('frame-target');
+      frameDrag.hoverEl = boxEl;
+    }
+
+    frameDrag.hoverNodeId = hoverNodeId;
+    frameDrag.pastCenter = pastCenter;
+
+    if (!target) return;
+
+    if (target.remove) {
+      // Живий попередній перегляд «видалення» рамки — притлумлюємо контур,
+      // остаточне видалення групи станеться при відпусканні маркера.
+      frameDrag.pendingRemove = true;
+      frameDrag.frameRectEl.classList.add('removing');
+      return;
+    }
+
+    frameDrag.pendingRemove = false;
+    frameDrag.frameRectEl.classList.remove('removing');
+
+    // Живе (без renderAll) оновлення геометрії рамки під нові межі — та сама
+    // формула базового прямокутника рамки, що й в остаточному рендері
+    // (без урахування розсування вкладених рамок — воно застосується коректно
+    // вже після renderAll() при відпусканні маркера).
+    var newGb = computeGroupMemberBounds(frameDrag.root, { nodeIds: target.newIds });
+    if (!newGb) return;
+    var baseRect = computeBaseFrameRect(newGb, frameDrag.meta);
+    if (!baseRect) return;
+    frameDrag.frameRectEl.setAttribute('x', baseRect.x);
+    frameDrag.frameRectEl.setAttribute('y', baseRect.y);
+    frameDrag.frameRectEl.setAttribute('width', baseRect.width);
+    frameDrag.frameRectEl.setAttribute('height', baseRect.height);
+    if (frameDrag.frameHitEl) {
+      frameDrag.frameHitEl.setAttribute('x', baseRect.x);
+      frameDrag.frameHitEl.setAttribute('y', baseRect.y);
+      frameDrag.frameHitEl.setAttribute('width', baseRect.width);
+      frameDrag.frameHitEl.setAttribute('height', baseRect.height);
+    }
   }
 
   function onFrameDragEnd() {
+    if (!frameDrag) return;
+    var drag = frameDrag;
     frameDrag = null;
     window.removeEventListener('pointermove', onFrameDragMove);
     window.removeEventListener('pointerup', onFrameDragEnd);
+    if (drag.hoverEl) drag.hoverEl.classList.remove('frame-target');
+    if (drag.frameRectEl) { drag.frameRectEl.classList.remove('dragging'); drag.frameRectEl.classList.remove('removing'); }
+    if (drag.frameHitEl) drag.frameHitEl.classList.remove('dragging');
+    if (drag.hoverNodeId != null) {
+      updateFrameBoundary(drag.sentenceIndex, drag.groupId, drag.handle, drag.hoverNodeId, drag.pastCenter);
+    }
   }
 
   function updateFrameBoundary(sentenceIndex, groupId, handle, hoverNodeId, pastCenter) {
@@ -1626,41 +1780,12 @@
     if (!sentence) return;
     var group = (sentence.groups || []).filter(function (g) { return g.id === groupId; })[0];
     if (!group) return;
-    // Рамка кореня речення (group.parentId === null) не має справжніх
-    // сиблінгів — корінь завжди єдиний, тож список «сусідів» тут віртуальний
-    // з одним елементом: розширити рамку нікуди, але «витягнути» корінь із
-    // рамки перетягуванням маркера за центр (див. нижче) усе одно можливо.
-    var siblings;
-    if (group.parentId === null) {
-      siblings = [{ node: sentence.root }];
-    } else {
-      var parent = findNode(sentence.root, group.parentId);
-      if (!parent) return;
-      siblings = parent.children;
-    }
 
-    var hoverIdx = -1;
-    for (var i = 0; i < siblings.length; i++) {
-      if (siblings[i].node.id === hoverNodeId) { hoverIdx = i; break; }
-    }
-    if (hoverIdx === -1) return; // не сиблінг цього батька — ігноруємо
+    var target = computeFrameDragTarget(sentence.root, group, handle, hoverNodeId, pastCenter);
+    if (!target) return;
 
-    var currentIdx = [];
-    siblings.forEach(function (edge, idx) {
-      if (group.nodeIds.indexOf(edge.node.id) !== -1) currentIdx.push(idx);
-    });
-    if (!currentIdx.length) return;
-    var minIdx = Math.min.apply(null, currentIdx);
-    var maxIdx = Math.max.apply(null, currentIdx);
-
-    // Єдиний прямокутник лишився в рамці, і маркер перетягнуто за його
-    // центр — прибираємо рамку повністю, щоб цей останній прямокутник міг
-    // «вийти» з рамки (звузити рамку нижче 1 елемента інакше неможливо).
-    if (minIdx === maxIdx && hoverIdx === minIdx && pastCenter) {
+    if (target.remove) {
       sentence.groups = (sentence.groups || []).filter(function (g) { return g.id !== groupId; });
-      frameDrag = null;
-      window.removeEventListener('pointermove', onFrameDragMove);
-      window.removeEventListener('pointerup', onFrameDragEnd);
       if (selection.type === 'group' && selection.sentenceIndex === sentenceIndex && selection.groupId === groupId) {
         clearSelection();
       } else {
@@ -1669,15 +1794,7 @@
       return;
     }
 
-    var newMin = minIdx, newMax = maxIdx;
-    if (handle === 'top') {
-      newMin = Math.min(hoverIdx, maxIdx);
-    } else {
-      newMax = Math.max(hoverIdx, minIdx);
-    }
-
-    var newIds = [];
-    for (var j = newMin; j <= newMax; j++) newIds.push(siblings[j].node.id);
+    var newIds = target.newIds;
     if (newIds.length === group.nodeIds.length && newIds.every(function (id, idx) { return id === group.nodeIds[idx]; })) return;
     group.nodeIds = newIds;
     renderAll();
