@@ -627,7 +627,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.6</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.7</span></h1>
       </header>
 
       <div class="panel">
@@ -1063,12 +1063,20 @@
   // рамки. Проте якщо ця гілка технічно є нащадком члена ІНШОЇ (зовнішньої,
   // охоплюючої) рамки, для меж ТІЄЇ зовнішньої рамки її пропускати не треба —
   // зовнішня рамка має розширюватись і під такий прямокутник теж.
-  function collectFrameSubtreeIds(node, groupId, out) {
+  // Виняток: якщо вузол, до якого приєднано такий «зовнішній» прямокутник
+  // (доданий до ІНШОЇ рамки), сам є ПРЯМИМ членом ПОТОЧНОЇ групи (groupNodeIds)
+  // — тобто дві рамки мають спільний прямокутник-член — така гілка все одно
+  // пропускається. Інакше прямокутник, доданий «до» однієї рамки через
+  // спільний вузол, помилково потрапляв би й у межі ІНШОЇ (напр. вкладеної)
+  // рамки, що має цей самий вузол своїм членом, і та рамка неправильно
+  // розширювалась би, охоплюючи чужий доданий прямокутник.
+  function collectFrameSubtreeIds(node, groupId, groupNodeIds, out) {
     out = out || [];
     out.push(node.id);
     node.children.forEach(function (edge) {
       if (edge.frameGroupId === groupId) return;
-      collectFrameSubtreeIds(edge.node, groupId, out);
+      if (edge.frameGroupId && groupNodeIds && groupNodeIds.indexOf(node.id) !== -1) return;
+      collectFrameSubtreeIds(edge.node, groupId, groupNodeIds, out);
     });
     return out;
   }
@@ -1089,7 +1097,7 @@
     group.nodeIds.forEach(function (id) {
       var n = findNode(root, id);
       if (!n) return;
-      collectFrameSubtreeIds(n, group.id).forEach(function (descId) {
+      collectFrameSubtreeIds(n, group.id, group.nodeIds).forEach(function (descId) {
         var d = findNode(root, descId);
         if (!d) return;
         minX = Math.min(minX, d.x);
