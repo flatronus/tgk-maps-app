@@ -627,7 +627,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.2</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.3</span></h1>
       </header>
 
       <div class="panel">
@@ -1714,71 +1714,85 @@
     // може перехопити жест як прокрутку сторінки (навіть при touch-action:none
     // на самому маркері) — через це розширення рамки дотиком не спрацьовувало.
     if (e.cancelable) e.preventDefault();
-    var stack = document.elementsFromPoint(e.clientX, e.clientY);
-    var boxEl = null;
-    for (var si = 0; si < stack.length; si++) {
-      var candidate = stack[si].closest('[data-node-id]');
-      if (candidate) { boxEl = candidate; break; }
-    }
-    if (!boxEl) return;
-    var hoverNodeId = parseInt(boxEl.getAttribute('data-node-id'), 10);
-    var boxRect = boxEl.getBoundingClientRect();
-    // Якщо курсор перетягнутого маркера пройшов ЗА центр прямокутника, над
-    // яким він зараз перебуває (top — нижче центру, bottom — вище центру),
-    // це сигнал «прибрати цей прямокутник із рамки» — навіть якщо він єдиний,
-    // хто лишився в групі (інакше останній прямокутник ніколи не можна було б
-    // вивести з рамки перетягуванням: звузити рамку нижче 1 елемента раніше
-    // було неможливо).
-    var pastCenter = frameDrag.handle === 'top'
-      ? e.clientY > boxRect.top + boxRect.height / 2
-      : e.clientY < boxRect.top + boxRect.height / 2;
+    try {
+      // document.elementsFromPoint підтримується не в усіх мобільних
+      // браузерах/WebView — якщо його немає, це раніше кидало виняток на
+      // КОЖНОМУ русі пальця одразу після pointerdown (контур встигав
+      // почервоніти, а далі нічого не відбувалося, бо виняток обривав усю
+      // подальшу обробку жесту). Тепер є резервний варіант через
+      // elementFromPoint.
+      var stack = typeof document.elementsFromPoint === 'function'
+        ? document.elementsFromPoint(e.clientX, e.clientY)
+        : [document.elementFromPoint(e.clientX, e.clientY)].filter(Boolean);
+      var boxEl = null;
+      for (var si = 0; si < stack.length; si++) {
+        var candidate = stack[si].closest('[data-node-id]');
+        if (candidate) { boxEl = candidate; break; }
+      }
+      if (!boxEl) return;
+      var hoverNodeId = parseInt(boxEl.getAttribute('data-node-id'), 10);
+      var boxRect = boxEl.getBoundingClientRect();
+      // Якщо курсор перетягнутого маркера пройшов ЗА центр прямокутника, над
+      // яким він зараз перебуває (top — нижче центру, bottom — вище центру),
+      // це сигнал «прибрати цей прямокутник із рамки» — навіть якщо він єдиний,
+      // хто лишився в групі (інакше останній прямокутник ніколи не можна було б
+      // вивести з рамки перетягуванням: звузити рамку нижче 1 елемента раніше
+      // було неможливо).
+      var pastCenter = frameDrag.handle === 'top'
+        ? e.clientY > boxRect.top + boxRect.height / 2
+        : e.clientY < boxRect.top + boxRect.height / 2;
 
-    var target = computeFrameDragTarget(frameDrag.root, frameDrag.group, frameDrag.handle, hoverNodeId, pastCenter);
+      var target = computeFrameDragTarget(frameDrag.root, frameDrag.group, frameDrag.handle, hoverNodeId, pastCenter);
 
-    // Підсвітка прямокутника, над яким зараз палець/курсор, — лише якщо він
-    // є дійсним сиблінгом рамки (валідна ціль).
-    if (frameDrag.hoverEl && frameDrag.hoverEl !== boxEl) {
-      frameDrag.hoverEl.classList.remove('frame-target');
-      frameDrag.hoverEl = null;
-    }
-    if (target && boxEl) {
-      boxEl.classList.add('frame-target');
-      frameDrag.hoverEl = boxEl;
-    }
+      // Підсвітка прямокутника, над яким зараз палець/курсор, — лише якщо він
+      // є дійсним сиблінгом рамки (валідна ціль).
+      if (frameDrag.hoverEl && frameDrag.hoverEl !== boxEl) {
+        frameDrag.hoverEl.classList.remove('frame-target');
+        frameDrag.hoverEl = null;
+      }
+      if (target && boxEl) {
+        boxEl.classList.add('frame-target');
+        frameDrag.hoverEl = boxEl;
+      }
 
-    frameDrag.hoverNodeId = hoverNodeId;
-    frameDrag.pastCenter = pastCenter;
+      frameDrag.hoverNodeId = hoverNodeId;
+      frameDrag.pastCenter = pastCenter;
 
-    if (!target) return;
+      if (!target) return;
 
-    if (target.remove) {
-      // Живий попередній перегляд «видалення» рамки — притлумлюємо контур,
-      // остаточне видалення групи станеться при відпусканні маркера.
-      frameDrag.pendingRemove = true;
-      frameDrag.frameRectEl.classList.add('removing');
-      return;
-    }
+      if (target.remove) {
+        // Живий попередній перегляд «видалення» рамки — притлумлюємо контур,
+        // остаточне видалення групи станеться при відпусканні маркера.
+        frameDrag.pendingRemove = true;
+        frameDrag.frameRectEl.classList.add('removing');
+        return;
+      }
 
-    frameDrag.pendingRemove = false;
-    frameDrag.frameRectEl.classList.remove('removing');
+      frameDrag.pendingRemove = false;
+      frameDrag.frameRectEl.classList.remove('removing');
 
-    // Живе (без renderAll) оновлення геометрії рамки під нові межі — та сама
-    // формула базового прямокутника рамки, що й в остаточному рендері
-    // (без урахування розсування вкладених рамок — воно застосується коректно
-    // вже після renderAll() при відпусканні маркера).
-    var newGb = computeGroupMemberBounds(frameDrag.root, { nodeIds: target.newIds });
-    if (!newGb) return;
-    var baseRect = computeBaseFrameRect(newGb, frameDrag.meta);
-    if (!baseRect) return;
-    frameDrag.frameRectEl.setAttribute('x', baseRect.x);
-    frameDrag.frameRectEl.setAttribute('y', baseRect.y);
-    frameDrag.frameRectEl.setAttribute('width', baseRect.width);
-    frameDrag.frameRectEl.setAttribute('height', baseRect.height);
-    if (frameDrag.frameHitEl) {
-      frameDrag.frameHitEl.setAttribute('x', baseRect.x);
-      frameDrag.frameHitEl.setAttribute('y', baseRect.y);
-      frameDrag.frameHitEl.setAttribute('width', baseRect.width);
-      frameDrag.frameHitEl.setAttribute('height', baseRect.height);
+      // Живе (без renderAll) оновлення геометрії рамки під нові межі — та сама
+      // формула базового прямокутника рамки, що й в остаточному рендері
+      // (без урахування розсування вкладених рамок — воно застосується коректно
+      // вже після renderAll() при відпусканні маркера).
+      var newGb = computeGroupMemberBounds(frameDrag.root, { nodeIds: target.newIds });
+      if (!newGb) return;
+      var baseRect = computeBaseFrameRect(newGb, frameDrag.meta);
+      if (!baseRect) return;
+      frameDrag.frameRectEl.setAttribute('x', baseRect.x);
+      frameDrag.frameRectEl.setAttribute('y', baseRect.y);
+      frameDrag.frameRectEl.setAttribute('width', baseRect.width);
+      frameDrag.frameRectEl.setAttribute('y', baseRect.y);
+      frameDrag.frameRectEl.setAttribute('width', baseRect.width);
+      frameDrag.frameRectEl.setAttribute('height', baseRect.height);
+      if (frameDrag.frameHitEl) {
+        frameDrag.frameHitEl.setAttribute('x', baseRect.x);
+        frameDrag.frameHitEl.setAttribute('y', baseRect.y);
+        frameDrag.frameHitEl.setAttribute('width', baseRect.width);
+        frameDrag.frameHitEl.setAttribute('height', baseRect.height);
+      }
+    } catch (err) {
+      console.error('onFrameDragMove:', err);
     }
   }
 
