@@ -996,21 +996,43 @@
       cursorY += (boundaryExtras.before[node.id] || 0);
       node.x = columnX[node.depth];
 
-      if (node.children.length === 0) {
+      // Прямокутники, додані «до рамки» (edge.frameGroupId), — це не звичайні
+      // дочірні у структурі дерева, а візуально «зовнішні» щодо рамки: їхню
+      // остаточну позицію (і x, і y) повністю перевизначає repositionFrameChildren
+      // після побудови рамок. Тому їх виключено з розрахунку центрування
+      // батьківського вузла (інакше сама наявність такого прямокутника
+      // зсувала б вертикальну позицію anchorNode і, каскадно, усіх його
+      // предків) і з витрати курсора основної колонки (інакше він «з'їдав»
+      // місце в потоці розкладки, зсуваючи вниз усі наступні, не пов'язані
+      // з рамкою вузли дерева).
+      var normalChildren = node.children.filter(function (edge) { return !edge.frameGroupId; });
+      var frameChildren = node.children.filter(function (edge) { return edge.frameGroupId; });
+
+      if (normalChildren.length === 0) {
         node.y = cursorY;
         cursorY += node.height + SIBLING_GAP;
       } else {
-        node.children.forEach(function (edge) {
+        normalChildren.forEach(function (edge) {
           place(edge.node);
         });
-        var first = node.children[0].node;
-        var last = node.children[node.children.length - 1].node;
+        var first = normalChildren[0].node;
+        var last = normalChildren[normalChildren.length - 1].node;
         var firstCenter = first.y + first.height / 2;
         var lastCenter = last.y + last.height / 2;
         node.y = (firstCenter + lastCenter) / 2 - node.height / 2;
       }
 
       cursorY += (boundaryExtras.after[node.id] || 0);
+
+      // Розкладаємо піддерево кожного «рамкового» прямокутника в ізольованому
+      // проході курсора (він одразу відкочується назад) — так вимірюється
+      // й розташовується його власна структура (якщо в нього є діти), але
+      // це жодним чином не впливає на курсор чи центрування основного дерева.
+      frameChildren.forEach(function (edge) {
+        var savedCursorY = cursorY;
+        place(edge.node);
+        cursorY = savedCursorY;
+      });
     }
 
     place(root);
