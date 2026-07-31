@@ -231,7 +231,7 @@
   }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  #addBtn, #clarifyBtn, #frameBtn, #moveUpBtn, #moveDownBtn {
+  #addBtn, #clarifyBtn, #frameBtn {
     flex: 0 0 auto;
     width: 46px;
     height: 46px;
@@ -269,14 +269,6 @@
     color: var(--edge-selected);
     border-color: var(--edge-selected);
   }
-
-  #moveUpBtn, #moveDownBtn {
-    background: transparent;
-    color: var(--accent);
-    border-color: var(--accent-dim);
-    font-size: 15px;
-  }
-  #moveUpBtn:hover, #moveDownBtn:hover { opacity: 0.8; }
 
   .line-style-row {
     display: flex;
@@ -323,11 +315,6 @@
   }
   #frameBtn:disabled,
   .zoom-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-  #moveUpBtn:disabled,
-  #moveDownBtn:disabled {
     opacity: 0.35;
     cursor: not-allowed;
   }
@@ -592,6 +579,16 @@
     fill: rgba(244, 195, 99, 0.18);
   }
 
+  .drag-insert-indicator {
+    position: fixed;
+    height: 3px;
+    background: var(--edge-selected);
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(4, 14, 26, 0.4);
+    pointer-events: none;
+    z-index: 60;
+  }
+
   .word-box.frame-target {
     stroke: var(--danger);
     stroke-width: 2.6;
@@ -821,7 +818,7 @@
     .panel { padding: 12px 14px; }
     .sentence-row { gap: 8px; padding: 10px 0; }
     .row-label { min-width: 26px; font-size: 10px; padding-top: 8px; }
-    #addBtn, #clarifyBtn, #frameBtn, #moveUpBtn, #moveDownBtn { width: 42px; height: 42px; font-size: 18px; }
+    #addBtn, #clarifyBtn, #frameBtn { width: 42px; height: 42px; font-size: 18px; }
     .statusbar .wrap { font-size: 10.5px; gap: 8px 14px; }
   }
 
@@ -837,7 +834,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.15.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.15.1</span></h1>
       </header>
 
       <div class="panel">
@@ -846,8 +843,6 @@
           <button id="addBtn" title="Додати">+</button>
           <button id="clarifyBtn" title="Уточнити">✎</button>
           <button id="frameBtn" title="Рамка визначень">⬚</button>
-          <button id="moveUpBtn" title="Перемістити раніше (вище) серед прямокутників одного рівня">▲</button>
-          <button id="moveDownBtn" title="Перемістити пізніше (нижче) серед прямокутників одного рівня">▼</button>
         </div>
         <div class="line-style-row" id="lineStyleRow">
           <div class="line-style-icons">
@@ -929,6 +924,8 @@
     </div>
   </div>
 
+  <div id="dragInsertIndicator" class="drag-insert-indicator hidden"></div>
+
 <script>
 (function () {
   "use strict";
@@ -954,8 +951,6 @@
   var addBtn = document.getElementById('addBtn');
   var clarifyBtn = document.getElementById('clarifyBtn');
   var frameBtn = document.getElementById('frameBtn');
-  var moveUpBtn = document.getElementById('moveUpBtn');
-  var moveDownBtn = document.getElementById('moveDownBtn');
   var lineStyleButtons = Array.prototype.slice.call(document.querySelectorAll('.line-style-btn'));
   var list = document.getElementById('sentenceList');
 
@@ -1024,6 +1019,7 @@
   // Стан перетягування прямокутника терміну/визначення на інший прямокутник
   // для створення нового зв'язку (переприв'язки вузла до нового батька).
   var nodeDrag = null;
+  var dragInsertIndicator = document.getElementById('dragInsertIndicator');
   var DRAG_THRESHOLD = 6;
 
   var zoomLevel = 1;
@@ -2411,8 +2407,12 @@
     renderAll();
   }
 
-  // Перетягування прямокутника на інший прямокутник: створює новий зв'язок,
-  // переприв'язуючи вузол (разом з його дочірніми прямокутниками) до нової цілі.
+  // Перетягування прямокутника на інший прямокутник: залежно від того, в
+  // яку зону цілі відпущено вказівник, або переприв'язує вузол як дочірній
+  // (як і раніше — відпускання в середню зону цілі), або переставляє його
+  // як брата ПЕРЕД/ПІСЛА цілі серед прямокутників одного рівня (відпускання
+  // у верхню/нижню зону цілі) — так само, як переміщення карток у звичайних
+  // програмах для карт розуму.
   function onNodeDragMove(e) {
     if (!nodeDrag) return;
     var dx = e.clientX - nodeDrag.startX;
@@ -2424,12 +2424,43 @@
 
     var prevTarget = list.querySelector('.word-box.drop-target');
     if (prevTarget) prevTarget.classList.remove('drop-target');
+    dragInsertIndicator.classList.add('hidden');
+    nodeDrag.dropMode = null;
+    nodeDrag.dropTargetNodeId = null;
+    nodeDrag.dropTargetSentenceIndex = null;
 
     var el = document.elementFromPoint(e.clientX, e.clientY);
     var boxEl = el ? el.closest('[data-node-id]') : null;
-    if (boxEl) {
-      var hoverId = parseInt(boxEl.getAttribute('data-node-id'), 10);
-      if (hoverId !== nodeDrag.nodeId) boxEl.classList.add('drop-target');
+    if (!boxEl) return;
+    var hoverId = parseInt(boxEl.getAttribute('data-node-id'), 10);
+    if (hoverId === nodeDrag.nodeId) return;
+    var hoverSentenceIndex = parseInt(boxEl.getAttribute('data-sentence-index'), 10);
+
+    // «Перед»/«після» (перестановка серед братів того ж рівня) можливе лише
+    // в межах того самого графічного речення й лише якщо в цілі взагалі є
+    // батько (корінь речення братів не має, поруч із ним можна тільки
+    // приєднатись як дочірній).
+    var sameSentence = hoverSentenceIndex === nodeDrag.sentenceIndex;
+    var targetSentence = STORAGE.sentences[hoverSentenceIndex];
+    var targetHasParent = sameSentence && targetSentence && !!findParent(targetSentence.root, hoverId);
+
+    var rect = boxEl.getBoundingClientRect();
+    var relY = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5;
+    var zone = 'child';
+    if (targetHasParent && relY < 0.3) zone = 'before';
+    else if (targetHasParent && relY > 0.7) zone = 'after';
+
+    nodeDrag.dropMode = zone;
+    nodeDrag.dropTargetNodeId = hoverId;
+    nodeDrag.dropTargetSentenceIndex = hoverSentenceIndex;
+
+    if (zone === 'child') {
+      boxEl.classList.add('drop-target');
+    } else {
+      dragInsertIndicator.classList.remove('hidden');
+      dragInsertIndicator.style.left = rect.left + 'px';
+      dragInsertIndicator.style.width = rect.width + 'px';
+      dragInsertIndicator.style.top = (zone === 'before' ? rect.top - 2 : rect.bottom - 1) + 'px';
     }
   }
 
@@ -2442,15 +2473,16 @@
 
     var prevTarget = list.querySelector('.word-box.drop-target');
     if (prevTarget) prevTarget.classList.remove('drop-target');
+    dragInsertIndicator.classList.add('hidden');
 
     if (!dragInfo.moved) return; // звичайний клік вже опрацьовано окремим 'click'
+    if (dragInfo.dropTargetNodeId == null) return; // відпущено не над прямокутником
 
-    var el = document.elementFromPoint(e.clientX, e.clientY);
-    var boxEl = el ? el.closest('[data-node-id]') : null;
-    if (!boxEl) return;
-    var targetNodeId = parseInt(boxEl.getAttribute('data-node-id'), 10);
-    var targetSentenceIndex = parseInt(boxEl.getAttribute('data-sentence-index'), 10);
-    reparentNode(dragInfo.sentenceIndex, dragInfo.nodeId, targetSentenceIndex, targetNodeId);
+    if (dragInfo.dropMode === 'before' || dragInfo.dropMode === 'after') {
+      reorderNodeAsSibling(dragInfo.sentenceIndex, dragInfo.nodeId, dragInfo.dropTargetNodeId, dragInfo.dropMode === 'after');
+    } else {
+      reparentNode(dragInfo.sentenceIndex, dragInfo.nodeId, dragInfo.dropTargetSentenceIndex, dragInfo.dropTargetNodeId);
+    }
   }
 
   function reparentNode(sentenceIndex, draggedNodeId, targetSentenceIndex, targetNodeId) {
@@ -2517,60 +2549,75 @@
     renderAll();
   }
 
-  // Перевіряє, чи вибраний прямокутник можна групувати в рамку. Раніше
-  // корінь речення виключався (бо не має братів/сестер), але тепер рамку
-  // можна застосувати і до кореня — така рамка просто не має куди
-  // розширюватись (сиблінгів у кореня немає), але сама можливість є.
+  // Переставляє прямокутник як брата ПЕРЕД чи ПІСЛЯ цільового прямокутника
+  // того самого графічного речення — тобто змінює порядок розташування
+  // прямокутників одного рівня відносно спільного батьківського прямокутника
+  // (а якщо ціль прикріплена до рамки — приєднує перетягнутий вузол до тієї
+  // самої рамки, у потрібне місце в її порядку).
+  function reorderNodeAsSibling(sentenceIndex, draggedNodeId, targetNodeId, insertAfter) {
+    if (draggedNodeId === targetNodeId) return;
+    var sentence = STORAGE.sentences[sentenceIndex];
+    if (!sentence) return;
+    if (sentence.root.id === draggedNodeId) return; // корінь речення не може стати чиїмось братом
+
+    var draggedNode = findNode(sentence.root, draggedNodeId);
+    if (!draggedNode) return;
+
+    // Заборона: не можна поставити вузол братом власного нащадка.
+    var subtreeIds = collectSubtreeIds(draggedNode);
+    if (subtreeIds.indexOf(targetNodeId) !== -1) return;
+
+    var targetParentInfo = findParent(sentence.root, targetNodeId);
+    if (!targetParentInfo) return; // ціль — корінь, у нього немає братів
+
+    var draggedParentInfo = findParent(sentence.root, draggedNodeId);
+    if (!draggedParentInfo) return;
+
+    var edge = draggedParentInfo.parent.children[draggedParentInfo.index];
+    var oldParentId = draggedParentInfo.parent.id;
+    draggedParentInfo.parent.children.splice(draggedParentInfo.index, 1);
+
+    // Після видалення індекс цілі в її батьківському масиві міг змінитись
+    // (якщо видалений вузол стояв у ТОМУ Ж масиві раніше за ціль) —
+    // перезнаходимо актуальну позицію.
+    var freshTargetInfo = findParent(sentence.root, targetNodeId);
+    if (!freshTargetInfo) {
+      draggedParentInfo.parent.children.splice(draggedParentInfo.index, 0, edge);
+      return;
+    }
+    var newParent = freshTargetInfo.parent;
+    var targetEdge = newParent.children[freshTargetInfo.index];
+    var insertIndex = freshTargetInfo.index + (insertAfter ? 1 : 0);
+
+    // Прямокутник, покладений поруч з іншим, приєднується до тієї самої
+    // групи впорядкування, що й сусід: якщо сусід — звичайна дитина батька,
+    // прапорець рамки знімається; якщо сусід прикріплений до рамки —
+    // приєднується до тієї самої рамки.
+    edge.frameGroupId = targetEdge.frameGroupId;
+    if (newParent.id !== oldParentId) edge.lineType = currentLineType;
+    newParent.children.splice(insertIndex, 0, edge);
+
+    // Прибираємо вузол зі списків nodeIds старих рамок, якщо він або
+    // покинув свого колишнього батька, або тепер прикріплений до рамки
+    // напряму через frameGroupId (щоб не значився в групі двічі); порожні
+    // рамки видаляємо.
+    sentence.groups = (sentence.groups || []).map(function (g) {
+      if (edge.frameGroupId || (newParent.id !== oldParentId && g.parentId === oldParentId)) {
+        g.nodeIds = g.nodeIds.filter(function (id) { return id !== draggedNodeId; });
+      }
+      return g;
+    }).filter(function (g) { return g.nodeIds.length > 0; });
+
+    renderAll();
+  }
+
+
   function canGroupSelectedNode() {
     if (selection.type !== 'node') return false;
     var sentence = STORAGE.sentences[selection.sentenceIndex];
     if (!sentence) return false;
     if (sentence.root.id === selection.nodeId) return true;
     return !!findParent(sentence.root, selection.nodeId);
-  }
-
-  // Повертає індекси в parent.children усіх «братів» вузла за заданим
-  // індексом — тобто тих, що належать до тієї ж групи впорядкування: або
-  // звичайні діти батька (без рамки), або діти, прикріплені до тієї самої
-  // рамки (однаковий frameGroupId). Порядок у межах групи — саме те, що
-  // визначає взаємне розташування прямокутників одного рівня на канві.
-  function getSiblingOrderGroup(parent, index) {
-    var groupKey = parent.children[index].frameGroupId || null;
-    var indices = [];
-    parent.children.forEach(function (edge, i) {
-      if ((edge.frameGroupId || null) === groupKey) indices.push(i);
-    });
-    return { indices: indices, posInGroup: indices.indexOf(index) };
-  }
-
-  // Чи можна перемістити вибраний прямокутник на -1 (раніше/вище) чи
-  // +1 (пізніше/нижче) серед братів одного рівня (відносно батьківського
-  // прямокутника чи рамки).
-  function canMoveSelectedNode(direction) {
-    if (selection.type !== 'node') return false;
-    var sentence = STORAGE.sentences[selection.sentenceIndex];
-    if (!sentence) return false;
-    var loc = findParent(sentence.root, selection.nodeId);
-    if (!loc) return false; // корінь речення — немає братів для переставляння
-    var group = getSiblingOrderGroup(loc.parent, loc.index);
-    var targetPos = group.posInGroup + direction;
-    return targetPos >= 0 && targetPos < group.indices.length;
-  }
-
-  // Переставляє вибраний прямокутник місцями із сусіднім братом того ж рівня
-  // (у межах того самого батька й тієї самої рамки, якщо вона є).
-  function moveSelectedNode(direction) {
-    if (!canMoveSelectedNode(direction)) return;
-    var sentence = STORAGE.sentences[selection.sentenceIndex];
-    var loc = findParent(sentence.root, selection.nodeId);
-    var group = getSiblingOrderGroup(loc.parent, loc.index);
-    var targetPos = group.posInGroup + direction;
-    var thisIndex = group.indices[group.posInGroup];
-    var otherIndex = group.indices[targetPos];
-    var tmp = loc.parent.children[thisIndex];
-    loc.parent.children[thisIndex] = loc.parent.children[otherIndex];
-    loc.parent.children[otherIndex] = tmp;
-    renderAll();
   }
 
   // Показує модальне вікно підтвердження з кнопками «Ок»/«Ні».
@@ -2838,8 +2885,6 @@
       groupTitleEdit.sentenceIndex === selection.sentenceIndex && groupTitleEdit.groupId === selection.groupId)));
     frameBtn.disabled = !canGroupSelectedNode();
     frameBtn.classList.toggle('active', selection.type === 'group');
-    moveUpBtn.disabled = !canMoveSelectedNode(-1);
-    moveDownBtn.disabled = !canMoveSelectedNode(1);
 
     if (selection.type === 'node') {
       var sentence = STORAGE.sentences[selection.sentenceIndex];
@@ -3001,9 +3046,6 @@
     sentence.groups.push(group);
     selectGroup(selection.sentenceIndex, group.id);
   });
-
-  moveUpBtn.addEventListener('click', function () { moveSelectedNode(-1); });
-  moveDownBtn.addEventListener('click', function () { moveSelectedNode(1); });
 
 
   // Перемикає режим редагування тексту вибраного прямокутника (основний
