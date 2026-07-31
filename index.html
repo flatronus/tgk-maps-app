@@ -627,7 +627,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.7</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.8</span></h1>
       </header>
 
       <div class="panel">
@@ -900,7 +900,7 @@
   // місця (через власний відступ, вкладеність в іншу рамку чи заголовок), а
   // не залишаються на місці, накладаючись на розширену рамку — так само, як
   // це прийнято в програмах для ментальних карт.
-  function computeGroupBoundaryExtras(root, groups) {
+  function computeGroupBoundaryExtras(root, groups, columnX, maxWidthByDepth) {
     var beforeMap = {}, afterMap = {};
     (groups || []).forEach(function (group) {
       if (!group.nodeIds || !group.nodeIds.length) return;
@@ -921,9 +921,28 @@
       var maxIdx = Math.max.apply(null, idxList);
       var firstId = siblings[minIdx].node.id;
       var lastId = siblings[maxIdx].node.id;
-      // Консервативна (із запасом) оцінка висоти заголовка, бо на цьому етапі
-      // ще не відома точна ширина рамки для перенесення тексту.
-      var titleAllowance = group.title ? (TITLE_TOP_GAP + TITLE_LINE_HEIGHT * 2 + TITLE_BOTTOM_GAP) : 0;
+      // Прогнозована ширина рамки (по X вона вже остаточна на цьому етапі,
+      // бо columnX/ширини прямокутників не залежать від подальшого
+      // розташування по Y) — рахуємо так само, як реальні межі рамки, щоб
+      // отримати ТОЧНУ (а не приблизну) кількість рядків перенесеного
+      // заголовка.
+      var minDepth = Infinity, maxRight = -Infinity;
+      group.nodeIds.forEach(function (id) {
+        var n = findNode(root, id);
+        if (!n) return;
+        collectFrameSubtreeIds(n, group.id, group.nodeIds).forEach(function (descId) {
+          var d = findNode(root, descId);
+          if (!d || columnX[d.depth] === undefined) return;
+          minDepth = Math.min(minDepth, d.depth);
+          maxRight = Math.max(maxRight, columnX[d.depth] + d.width);
+        });
+      });
+      var titleAllowance = 0;
+      if (group.title && minDepth !== Infinity) {
+        var frameW = maxRight - columnX[minDepth] + FRAME_PAD * 2;
+        var titleLines = wrapTitleText(group.title, frameW - TITLE_PAD_X * 2);
+        titleAllowance = titleLines.length ? (TITLE_TOP_GAP + titleLines.length * TITLE_LINE_HEIGHT + TITLE_BOTTOM_GAP) : 0;
+      }
       var extraTop = FRAME_PAD + NESTED_FRAME_GAP + titleAllowance;
       var extraBottom = FRAME_PAD + NESTED_FRAME_GAP;
       beforeMap[firstId] = Math.max(beforeMap[firstId] || 0, extraTop);
@@ -935,7 +954,6 @@
   function layoutTree(root, groups) {
     var maxWidthByDepth = [];
     var maxDepth = 0;
-    var boundaryExtras = computeGroupBoundaryExtras(root, groups);
 
     function measure(node, depth) {
       maxDepth = Math.max(maxDepth, depth);
@@ -960,6 +978,14 @@
     for (var d = 1; d <= maxDepth; d++) {
       columnX[d] = columnX[d - 1] + maxWidthByDepth[d - 1] + LEVEL_GAP;
     }
+
+    // Резерв місця під рамки рахуємо ТІЛЬКИ ПІСЛЯ вимірювання ширин і
+    // побудови колонок (columnX) — на цьому етапі вже точно відома
+    // прогнозована ширина кожної рамки, а отже й точна кількість рядків, на
+    // які реально перенесеться її заголовок (замість грубої консервативної
+    // оцінки «до 2 рядків», яка могла применшити фактичну висоту заголовка
+    // з 3+ рядками і призвести до накладання прямокутника на контур рамки).
+    var boundaryExtras = computeGroupBoundaryExtras(root, groups, columnX, maxWidthByDepth);
 
     var cursorY = ROW_PAD;
 
