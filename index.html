@@ -231,7 +231,7 @@
   }
   button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  #addBtn, #clarifyBtn, #frameBtn {
+  #addBtn, #clarifyBtn, #frameBtn, #moveUpBtn, #moveDownBtn {
     flex: 0 0 auto;
     width: 46px;
     height: 46px;
@@ -269,6 +269,14 @@
     color: var(--edge-selected);
     border-color: var(--edge-selected);
   }
+
+  #moveUpBtn, #moveDownBtn {
+    background: transparent;
+    color: var(--accent);
+    border-color: var(--accent-dim);
+    font-size: 15px;
+  }
+  #moveUpBtn:hover, #moveDownBtn:hover { opacity: 0.8; }
 
   .line-style-row {
     display: flex;
@@ -315,6 +323,11 @@
   }
   #frameBtn:disabled,
   .zoom-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  #moveUpBtn:disabled,
+  #moveDownBtn:disabled {
     opacity: 0.35;
     cursor: not-allowed;
   }
@@ -425,7 +438,7 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 15px;
     dominant-baseline: middle;
-    text-anchor: middle;
+    text-anchor: start;
     cursor: pointer;
     pointer-events: none;
     user-select: none;
@@ -438,7 +451,7 @@
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12px;
     dominant-baseline: middle;
-    text-anchor: middle;
+    text-anchor: start;
     pointer-events: none;
     user-select: none;
     -webkit-user-select: none;
@@ -488,8 +501,8 @@
     color: var(--ink);
     font-family: 'IBM Plex Mono', monospace;
     font-size: 15px;
-    text-align: center;
-    padding: 0 4px;
+    text-align: left;
+    padding: 0 4px 0 16px;
   }
   .node-edit-input.note-edit-input {
     color: var(--ink-dim);
@@ -808,7 +821,7 @@
     .panel { padding: 12px 14px; }
     .sentence-row { gap: 8px; padding: 10px 0; }
     .row-label { min-width: 26px; font-size: 10px; padding-top: 8px; }
-    #addBtn, #clarifyBtn, #frameBtn { width: 42px; height: 42px; font-size: 18px; }
+    #addBtn, #clarifyBtn, #frameBtn, #moveUpBtn, #moveDownBtn { width: 42px; height: 42px; font-size: 18px; }
     .statusbar .wrap { font-size: 10.5px; gap: 8px 14px; }
   }
 
@@ -824,7 +837,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.14.2</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.15.0</span></h1>
       </header>
 
       <div class="panel">
@@ -833,6 +846,8 @@
           <button id="addBtn" title="Додати">+</button>
           <button id="clarifyBtn" title="Уточнити">✎</button>
           <button id="frameBtn" title="Рамка визначень">⬚</button>
+          <button id="moveUpBtn" title="Перемістити раніше (вище) серед прямокутників одного рівня">▲</button>
+          <button id="moveDownBtn" title="Перемістити пізніше (нижче) серед прямокутників одного рівня">▼</button>
         </div>
         <div class="line-style-row" id="lineStyleRow">
           <div class="line-style-icons">
@@ -939,6 +954,8 @@
   var addBtn = document.getElementById('addBtn');
   var clarifyBtn = document.getElementById('clarifyBtn');
   var frameBtn = document.getElementById('frameBtn');
+  var moveUpBtn = document.getElementById('moveUpBtn');
+  var moveDownBtn = document.getElementById('moveDownBtn');
   var lineStyleButtons = Array.prototype.slice.call(document.querySelectorAll('.line-style-btn'));
   var list = document.getElementById('sentenceList');
 
@@ -1984,11 +2001,12 @@
         var titleLines = node.titleLines && node.titleLines.length ? node.titleLines : [node.text];
         var titleBlockHeight = titleLines.length * NODE_TITLE_LINE_HEIGHT;
         var titleFirstY = node.y + node.headerHeight / 2 - titleBlockHeight / 2 + NODE_TITLE_LINE_HEIGHT / 2 + 1;
-        text.setAttribute('x', node.x + node.width / 2);
+        var titleTextX = node.x + BOX_PAD_X;
+        text.setAttribute('x', titleTextX);
         text.setAttribute('y', titleFirstY);
         titleLines.forEach(function (line, lineIdx) {
           var tspan = document.createElementNS(SVG_NS, 'tspan');
-          tspan.setAttribute('x', node.x + node.width / 2);
+          tspan.setAttribute('x', titleTextX);
           if (lineIdx > 0) tspan.setAttribute('dy', NODE_TITLE_LINE_HEIGHT);
           tspan.textContent = line;
           text.appendChild(tspan);
@@ -2024,11 +2042,12 @@
           } else {
             var noteEl = document.createElementNS(SVG_NS, 'text');
             noteEl.setAttribute('class', 'note-text');
-            noteEl.setAttribute('x', node.x + node.width / 2);
+            var noteTextX = node.x + BOX_PAD_X;
+            noteEl.setAttribute('x', noteTextX);
             noteEl.setAttribute('y', noteY + NOTE_LINE_HEIGHT / 2 + 3);
             lines.forEach(function (line, lineIdx) {
               var tspan = document.createElementNS(SVG_NS, 'tspan');
-              tspan.setAttribute('x', node.x + node.width / 2);
+              tspan.setAttribute('x', noteTextX);
               if (lineIdx > 0) tspan.setAttribute('dy', NOTE_LINE_HEIGHT);
               tspan.textContent = line;
               noteEl.appendChild(tspan);
@@ -2510,6 +2529,50 @@
     return !!findParent(sentence.root, selection.nodeId);
   }
 
+  // Повертає індекси в parent.children усіх «братів» вузла за заданим
+  // індексом — тобто тих, що належать до тієї ж групи впорядкування: або
+  // звичайні діти батька (без рамки), або діти, прикріплені до тієї самої
+  // рамки (однаковий frameGroupId). Порядок у межах групи — саме те, що
+  // визначає взаємне розташування прямокутників одного рівня на канві.
+  function getSiblingOrderGroup(parent, index) {
+    var groupKey = parent.children[index].frameGroupId || null;
+    var indices = [];
+    parent.children.forEach(function (edge, i) {
+      if ((edge.frameGroupId || null) === groupKey) indices.push(i);
+    });
+    return { indices: indices, posInGroup: indices.indexOf(index) };
+  }
+
+  // Чи можна перемістити вибраний прямокутник на -1 (раніше/вище) чи
+  // +1 (пізніше/нижче) серед братів одного рівня (відносно батьківського
+  // прямокутника чи рамки).
+  function canMoveSelectedNode(direction) {
+    if (selection.type !== 'node') return false;
+    var sentence = STORAGE.sentences[selection.sentenceIndex];
+    if (!sentence) return false;
+    var loc = findParent(sentence.root, selection.nodeId);
+    if (!loc) return false; // корінь речення — немає братів для переставляння
+    var group = getSiblingOrderGroup(loc.parent, loc.index);
+    var targetPos = group.posInGroup + direction;
+    return targetPos >= 0 && targetPos < group.indices.length;
+  }
+
+  // Переставляє вибраний прямокутник місцями із сусіднім братом того ж рівня
+  // (у межах того самого батька й тієї самої рамки, якщо вона є).
+  function moveSelectedNode(direction) {
+    if (!canMoveSelectedNode(direction)) return;
+    var sentence = STORAGE.sentences[selection.sentenceIndex];
+    var loc = findParent(sentence.root, selection.nodeId);
+    var group = getSiblingOrderGroup(loc.parent, loc.index);
+    var targetPos = group.posInGroup + direction;
+    var thisIndex = group.indices[group.posInGroup];
+    var otherIndex = group.indices[targetPos];
+    var tmp = loc.parent.children[thisIndex];
+    loc.parent.children[thisIndex] = loc.parent.children[otherIndex];
+    loc.parent.children[otherIndex] = tmp;
+    renderAll();
+  }
+
   // Показує модальне вікно підтвердження з кнопками «Ок»/«Ні».
   var pendingConfirmAction = null;
   function showConfirm(message, onOk) {
@@ -2775,6 +2838,8 @@
       groupTitleEdit.sentenceIndex === selection.sentenceIndex && groupTitleEdit.groupId === selection.groupId)));
     frameBtn.disabled = !canGroupSelectedNode();
     frameBtn.classList.toggle('active', selection.type === 'group');
+    moveUpBtn.disabled = !canMoveSelectedNode(-1);
+    moveDownBtn.disabled = !canMoveSelectedNode(1);
 
     if (selection.type === 'node') {
       var sentence = STORAGE.sentences[selection.sentenceIndex];
@@ -2936,6 +3001,9 @@
     sentence.groups.push(group);
     selectGroup(selection.sentenceIndex, group.id);
   });
+
+  moveUpBtn.addEventListener('click', function () { moveSelectedNode(-1); });
+  moveDownBtn.addEventListener('click', function () { moveSelectedNode(1); });
 
 
   // Перемикає режим редагування тексту вибраного прямокутника (основний
