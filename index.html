@@ -627,7 +627,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.8</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.9</span></h1>
       </header>
 
       <div class="panel">
@@ -1741,6 +1741,14 @@
     }
     if (hoverIdx === -1) return null; // не сиблінг цього батька — ігноруємо
 
+    // Прямокутник, доданий «до рамки» ІНШОЇ групи (edge.frameGroupId вказує
+    // на чужий groupId), — це не звичайний сиблінг, а зовнішній додаток
+    // чужої рамки, примусово розташований власною логікою тієї рамки. Його
+    // не можна захоплювати межею цієї рамки: інакше він одночасно вважався
+    // б «членом» двох різних рамок і «стрибав» би між позиціями, які для
+    // нього рахують дві незалежні, суперечливі одна одній частини коду.
+    if (siblings[hoverIdx].frameGroupId && siblings[hoverIdx].frameGroupId !== group.id) return null;
+
     var currentIdx = [];
     siblings.forEach(function (edge, idx) {
       if (group.nodeIds.indexOf(edge.node.id) !== -1) currentIdx.push(idx);
@@ -1762,6 +1770,20 @@
     } else {
       newMax = Math.max(hoverIdx, minIdx);
     }
+
+    // Якщо в отриманому діапазоні опиняється прямокутник, доданий «до
+    // рамки» іншої групи (навіть якщо сам hoverNodeId — легітимний, але
+    // діапазон між ним і поточною межею «перестрибує» через чужий додаток),
+    // обрізаємо діапазон одразу перед таким прямокутником у відповідному
+    // напрямку — щоб він так само ніколи не потрапив у цю рамку.
+    for (var k = newMin; k <= newMax; k++) {
+      var fgid = siblings[k].frameGroupId;
+      if (fgid && fgid !== group.id) {
+        if (handle === 'top') { newMin = k + 1; } else { newMax = k - 1; }
+        break;
+      }
+    }
+    if (newMin > newMax) return null;
 
     var newIds = [];
     for (var j = newMin; j <= newMax; j++) newIds.push(siblings[j].node.id);
