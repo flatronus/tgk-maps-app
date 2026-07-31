@@ -306,6 +306,7 @@
     text-transform: none;
   }
   .row-delete-top:hover { color: var(--danger); border-color: var(--danger); }
+  #tagsBtn:hover { color: var(--edge-selected); border-color: var(--edge-selected); }
   #editSentenceBtn:hover { color: var(--accent); border-color: var(--accent-dim); }
   #editSentenceBtn.active {
     background: rgba(244, 195, 99, 0.15);
@@ -337,16 +338,6 @@
     color: var(--accent);
     border-color: var(--accent);
     background: rgba(111, 214, 201, 0.08);
-  }
-
-  .target-indicator {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .target-indicator .target-value {
-    color: var(--accent);
   }
 
   .zoom-controls {
@@ -458,6 +449,19 @@
     stroke: var(--grid-line-strong);
     stroke-width: 1;
     pointer-events: none;
+  }
+
+  .node-tag-text {
+    fill: var(--edge-selected);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    text-anchor: start;
+    dominant-baseline: alphabetic;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 
   #sentenceInput,
@@ -610,6 +614,182 @@
   #confirmCancelBtn { background: transparent; color: var(--ink-dim); border-color: var(--grid-line-strong); }
   #confirmCancelBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
 
+  .tags-modal-box {
+    max-width: 380px;
+    width: 90vw;
+    text-align: left;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tags-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .tags-modal-header h3 {
+    margin: 0;
+    font-size: 15px;
+    color: var(--ink);
+    letter-spacing: 0.02em;
+  }
+  .modal-close-btn {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    font-size: 13px;
+    background: transparent;
+    border: 1px solid var(--grid-line-strong);
+    color: var(--ink-dim);
+    border-radius: 3px;
+  }
+  .modal-close-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+  .tags-new-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .tags-new-row input,
+  .tag-rename-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--blueprint-bg-deep);
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 3px;
+    color: var(--ink);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 6px 8px;
+    outline: none;
+  }
+  .tags-new-row input:focus,
+  .tag-rename-input:focus { border-color: var(--accent); }
+  .tags-new-row button {
+    flex: 0 0 auto;
+    width: 38px;
+    height: 34px;
+    padding: 0;
+    background: var(--accent);
+    color: #0B2036;
+    font-weight: 700;
+  }
+  .tags-new-row button:hover { opacity: 0.88; }
+
+  .tags-actions-row {
+    margin-bottom: 10px;
+  }
+  #insertTagModeBtn {
+    width: 100%;
+    background: transparent;
+    color: var(--ink-dim);
+    border: 1px solid var(--grid-line-strong);
+  }
+  #insertTagModeBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
+  #insertTagModeBtn.active {
+    background: rgba(244, 195, 99, 0.15);
+    color: var(--edge-selected);
+    border-color: var(--edge-selected);
+  }
+  #insertTagModeBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .tags-list, .tag-nodes-list {
+    overflow-y: auto;
+    max-height: 46vh;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .tags-empty {
+    color: var(--ink-dim);
+    font-size: 12.5px;
+    text-align: center;
+    padding: 10px 0;
+  }
+
+  .tag-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 3px;
+    padding: 6px 8px;
+  }
+  .tag-row-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    color: var(--edge-selected);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    text-align: left;
+    text-transform: none;
+    letter-spacing: normal;
+    cursor: pointer;
+    padding: 4px 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tag-row-name:hover { text-decoration: underline; }
+  .tag-row input.tag-rename-input {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .tag-row-btn {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    font-size: 12px;
+    background: transparent;
+    border: 1px solid var(--grid-line-strong);
+    color: var(--ink-dim);
+    border-radius: 3px;
+  }
+  .tag-row-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
+  .tag-row-btn.tag-delete-btn:hover { color: var(--danger); border-color: var(--danger); }
+
+  .tag-nodes-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  #tagsBackBtn {
+    flex: 0 0 auto;
+    background: transparent;
+    color: var(--ink-dim);
+    border: 1px solid var(--grid-line-strong);
+    font-size: 12.5px;
+  }
+  #tagsBackBtn:hover { color: var(--ink); border-color: var(--ink-dim); }
+  #tagNodesTitle {
+    color: var(--edge-selected);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .tag-node-item {
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 3px;
+    padding: 7px 9px;
+    background: transparent;
+    color: var(--ink);
+    text-align: left;
+    font-size: 12.5px;
+    text-transform: none;
+    letter-spacing: normal;
+    cursor: pointer;
+  }
+  .tag-node-item:hover { color: var(--accent); border-color: var(--accent-dim); }
+
+  .hidden { display: none !important; }
+
   @media (max-width: 720px) {
     .wrap { padding: 0 16px; }
     .topbar .wrap { padding-top: 14px; padding-bottom: 14px; }
@@ -637,7 +817,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.11</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.14.0</span></h1>
       </header>
 
       <div class="panel">
@@ -660,6 +840,7 @@
             </button>
           </div>
           <div class="row-actions">
+            <button class="row-delete-top" id="tagsBtn" title="Теги">🏷</button>
             <button class="row-delete-top" id="editSentenceBtn" title="Редагувати текст">✏</button>
             <button class="row-delete-top" id="deleteSentenceBtn" title="Видалити графічне речення">🗑</button>
           </div>
@@ -680,9 +861,6 @@
   <div class="statusbar">
     <div class="wrap">
       <span id="countLabel">Речень додано: 0</span>
-      <div class="target-indicator">
-        <span>Додати до: <span class="target-value" id="targetLabel">новий термін</span></span>
-      </div>
       <div class="zoom-controls">
         <button class="zoom-btn" id="zoomOutBtn" title="Зменшити">−</button>
         <span id="zoomLabel">100%</span>
@@ -701,6 +879,34 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="tagsModal">
+    <div class="modal-box tags-modal-box">
+      <div class="tags-modal-header">
+        <h3>Теги</h3>
+        <button class="modal-close-btn" id="tagsCloseBtn" title="Закрити">✕</button>
+      </div>
+
+      <div id="tagsMainView">
+        <div class="tags-new-row">
+          <input type="text" id="newTagInput" placeholder="Нова назва тегу…" autocomplete="off">
+          <button id="addTagBtn" title="Додати тег">+</button>
+        </div>
+        <div class="tags-actions-row">
+          <button id="insertTagModeBtn" title="Вставити тег до вибраного прямокутника">Вставити</button>
+        </div>
+        <div id="tagsList" class="tags-list"></div>
+      </div>
+
+      <div id="tagNodesView" class="hidden">
+        <div class="tag-nodes-header">
+          <button id="tagsBackBtn" title="Назад до списку тегів">← Назад</button>
+          <span id="tagNodesTitle"></span>
+        </div>
+        <div id="tagNodesList" class="tag-nodes-list"></div>
+      </div>
+    </div>
+  </div>
+
 <script>
 (function () {
   "use strict";
@@ -708,6 +914,11 @@
   // Кожне графічне речення — це дерево прямокутників (nodes), з'єднаних
   // ребрами (edges) із заданим типом лінії. STORAGE.sentences — масив таких дерев.
   var STORAGE = { sentences: [], nextNodeId: 1 };
+
+  // Глобальний список тегів (спільний для всіх графічних речень): { id, name }.
+  // Кожен прямокутник (node.tags) зберігає лише id застосованих до нього тегів.
+  var TAGS = [];
+  var nextTagId = 1;
 
   // Поточний вибір: прямокутник (type: 'node'), лінія-зв'язок (type: 'edge')
   // або рамка групування визначень (type: 'group').
@@ -736,17 +947,37 @@
   });
   var emptyState = document.getElementById('emptyState');
   var countLabel = document.getElementById('countLabel');
-  var targetLabel = document.getElementById('targetLabel');
   var canvasZoom = document.getElementById('canvasZoom');
   var zoomInBtn = document.getElementById('zoomInBtn');
   var zoomOutBtn = document.getElementById('zoomOutBtn');
   var zoomLabel = document.getElementById('zoomLabel');
   var editSentenceBtn = document.getElementById('editSentenceBtn');
   var deleteSentenceBtn = document.getElementById('deleteSentenceBtn');
+  var tagsBtn = document.getElementById('tagsBtn');
   var confirmModal = document.getElementById('confirmModal');
   var confirmMessage = document.getElementById('confirmMessage');
   var confirmOkBtn = document.getElementById('confirmOkBtn');
   var confirmCancelBtn = document.getElementById('confirmCancelBtn');
+  var tagsModal = document.getElementById('tagsModal');
+  var tagsCloseBtn = document.getElementById('tagsCloseBtn');
+  var tagsMainView = document.getElementById('tagsMainView');
+  var newTagInput = document.getElementById('newTagInput');
+  var addTagBtn = document.getElementById('addTagBtn');
+  var insertTagModeBtn = document.getElementById('insertTagModeBtn');
+  var tagsList = document.getElementById('tagsList');
+  var tagNodesView = document.getElementById('tagNodesView');
+  var tagNodesTitle = document.getElementById('tagNodesTitle');
+  var tagNodesList = document.getElementById('tagNodesList');
+  var tagsBackBtn = document.getElementById('tagsBackBtn');
+
+  // Чи активний режим «Вставити тег» у вікні тегів: якщо так, наступний клік
+  // по назві тега в списку призначає цей тег вибраному прямокутнику
+  // (замість переходу до списку прямокутників із цим тегом).
+  var tagInsertMode = false;
+  // Прямокутник (sentenceIndex/nodeId), до якого застосовується вставка тега —
+  // фіксується в момент відкриття вікна тегів, поки воно відкрите вибір
+  // не може змінитися (canvas недоступний під модальним затемненням).
+  var tagInsertTarget = null;
 
   // Вузол, текст якого зараз редагується (основний текст і/або уточнюючі
   // рядки стають полями вводу). Активується кнопкою «✏» лише для вибраного
@@ -784,6 +1015,20 @@
   var HEADER_HEIGHT_WITH_NOTES = 27;
   var BOX_PAD_X = 16;
   var NOTE_LINE_HEIGHT = 20;
+  // Максимальна ширина прямокутника (термін чи уточнення) — довший текст
+  // тепер переноситься по словах (wrapBoxText) замість розтягування
+  // прямокутника на всю довжину рядка.
+  var BOX_MAX_WIDTH = 250;
+  var NODE_TITLE_LINE_HEIGHT = 18;
+  // Вертикальні відступи «шапки» прямокутника над/під усіма рядками
+  // заголовка-терміну — підібрані так, щоб для одного рядка результат
+  // збігався з попередніми константами (BOX_HEIGHT / HEADER_HEIGHT_WITH_NOTES).
+  var HEADER_PAD_NO_NOTES = BOX_HEIGHT - NODE_TITLE_LINE_HEIGHT;
+  var HEADER_PAD_WITH_NOTES = HEADER_HEIGHT_WITH_NOTES - NODE_TITLE_LINE_HEIGHT;
+  // Додатковий простір знизу прямокутника під підпис тегів (формат «#тег»),
+  // що виводиться в лівому нижньому куті — резервується, лише якщо в
+  // прямокутника є хоч один застосований тег.
+  var TAG_LABEL_HEIGHT = 16;
   var SIBLING_GAP = 30;
   var LEVEL_GAP = 64;
   var ROW_PAD = 12;
@@ -849,11 +1094,51 @@
     return measureCtx.measureText(text).width;
   }
 
+  // Розбиває текст терміну чи уточнення прямокутника на рядки, що
+  // вміщуються в maxWidth (перенесення по словах; якщо саме слово довше за
+  // maxWidth — розбиває його по символах). Аналогічно wrapTitleText, але
+  // окрема функція, бо працює з іншим шрифтом/контекстом вимірювання
+  // (measureTextWidth, а не measureTitleWidth) і використовується для
+  // самих прямокутників, а не заголовків рамок.
+  function wrapBoxText(text, maxWidth) {
+    var safeWidth = Math.max(maxWidth, 20);
+    var words = String(text == null ? '' : text).split(/\s+/).filter(Boolean);
+    if (!words.length) return [''];
+    var lines = [];
+    var current = '';
+    words.forEach(function (word) {
+      var candidate = current ? current + ' ' + word : word;
+      if (measureTextWidth(candidate) <= safeWidth) {
+        current = candidate;
+        return;
+      }
+      if (current) { lines.push(current); current = ''; }
+      if (measureTextWidth(word) <= safeWidth) {
+        current = word;
+        return;
+      }
+      var piece = '';
+      for (var i = 0; i < word.length; i++) {
+        var testPiece = piece + word[i];
+        if (measureTextWidth(testPiece) > safeWidth && piece) {
+          lines.push(piece);
+          piece = word[i];
+        } else {
+          piece = testPiece;
+        }
+      }
+      current = piece;
+    });
+    if (current) lines.push(current);
+    return lines.length ? lines : [''];
+  }
+
   function createNode(text) {
     var node = {
       id: STORAGE.nextNodeId++,
       text: text,
       notes: [], // уточнюючі рядки всередині того самого прямокутника
+      tags: [], // id тегів (STORAGE.tags), застосованих до цього прямокутника
       children: [] // { node, lineType }
     };
     return node;
@@ -967,15 +1252,28 @@
 
     function measure(node, depth) {
       maxDepth = Math.max(maxDepth, depth);
-      var lines = [node.text].concat(node.notes || []);
+      var contentMaxWidth = BOX_MAX_WIDTH - BOX_PAD_X * 2;
+      var titleLines = wrapBoxText(node.text, contentMaxWidth);
+      var noteLinesArr = (node.notes || []).map(function (noteText) {
+        return wrapBoxText(noteText, contentMaxWidth);
+      });
       var widest = 0;
-      lines.forEach(function (line) {
+      titleLines.forEach(function (line) {
         widest = Math.max(widest, measureTextWidth(line));
       });
+      noteLinesArr.forEach(function (lines) {
+        lines.forEach(function (line) { widest = Math.max(widest, measureTextWidth(line)); });
+      });
       var hasNotes = !!(node.notes && node.notes.length);
-      node.width = Math.max(widest + BOX_PAD_X * 2, 40);
-      node.headerHeight = hasNotes ? HEADER_HEIGHT_WITH_NOTES : BOX_HEIGHT;
-      node.height = node.headerHeight + (hasNotes ? node.notes.length * NOTE_LINE_HEIGHT + 6 : 0);
+      var hasTags = !!(node.tags && node.tags.length);
+      node.titleLines = titleLines;
+      node.noteLinesArr = noteLinesArr;
+      node.width = Math.min(Math.max(widest + BOX_PAD_X * 2, 40), BOX_MAX_WIDTH);
+      var titleLineCount = Math.max(titleLines.length, 1);
+      node.headerHeight = titleLineCount * NODE_TITLE_LINE_HEIGHT + (hasNotes ? HEADER_PAD_WITH_NOTES : HEADER_PAD_NO_NOTES);
+      var totalNoteLines = noteLinesArr.reduce(function (sum, lines) { return sum + lines.length; }, 0);
+      node.height = node.headerHeight + (hasNotes ? totalNoteLines * NOTE_LINE_HEIGHT + 6 : 0);
+      if (hasTags) node.height += TAG_LABEL_HEIGHT;
       node.depth = depth;
       maxWidthByDepth[depth] = Math.max(maxWidthByDepth[depth] || 0, node.width);
       node.children.forEach(function (edge) {
@@ -1631,9 +1929,18 @@
       } else {
         var text = document.createElementNS(SVG_NS, 'text');
         text.setAttribute('class', 'word-text');
+        var titleLines = node.titleLines && node.titleLines.length ? node.titleLines : [node.text];
+        var titleBlockHeight = titleLines.length * NODE_TITLE_LINE_HEIGHT;
+        var titleFirstY = node.y + node.headerHeight / 2 - titleBlockHeight / 2 + NODE_TITLE_LINE_HEIGHT / 2 + 1;
         text.setAttribute('x', node.x + node.width / 2);
-        text.setAttribute('y', node.y + node.headerHeight / 2 + 1);
-        text.textContent = node.text;
+        text.setAttribute('y', titleFirstY);
+        titleLines.forEach(function (line, lineIdx) {
+          var tspan = document.createElementNS(SVG_NS, 'tspan');
+          tspan.setAttribute('x', node.x + node.width / 2);
+          if (lineIdx > 0) tspan.setAttribute('dy', NODE_TITLE_LINE_HEIGHT);
+          tspan.textContent = line;
+          text.appendChild(tspan);
+        });
         svg.appendChild(text);
       }
 
@@ -1646,10 +1953,13 @@
         divider.setAttribute('y2', node.y + node.headerHeight);
         svg.appendChild(divider);
 
+        var noteLineOffset = 0;
         node.notes.forEach(function (noteText, i) {
-          var noteY = node.y + node.headerHeight + i * NOTE_LINE_HEIGHT;
+          var lines = (node.noteLinesArr && node.noteLinesArr[i]) ? node.noteLinesArr[i] : [noteText];
+          var noteY = node.y + node.headerHeight + noteLineOffset * NOTE_LINE_HEIGHT;
+          var noteHeight = lines.length * NOTE_LINE_HEIGHT;
           if (isEditing) {
-            var noteField = createEditableField(node.x, noteY, node.width, NOTE_LINE_HEIGHT, noteText, 'note-edit-input', function (val, commit) {
+            var noteField = createEditableField(node.x, noteY, node.width, noteHeight, noteText, 'note-edit-input', function (val, commit) {
               node.notes[i] = val;
               if (commit) {
                 if (val.trim() === '') {
@@ -1664,10 +1974,32 @@
             noteEl.setAttribute('class', 'note-text');
             noteEl.setAttribute('x', node.x + node.width / 2);
             noteEl.setAttribute('y', noteY + NOTE_LINE_HEIGHT / 2 + 3);
-            noteEl.textContent = noteText;
+            lines.forEach(function (line, lineIdx) {
+              var tspan = document.createElementNS(SVG_NS, 'tspan');
+              tspan.setAttribute('x', node.x + node.width / 2);
+              if (lineIdx > 0) tspan.setAttribute('dy', NOTE_LINE_HEIGHT);
+              tspan.textContent = line;
+              noteEl.appendChild(tspan);
+            });
             svg.appendChild(noteEl);
           }
+          noteLineOffset += lines.length;
         });
+      }
+
+      if (node.tags && node.tags.length) {
+        var tagText = node.tags.map(function (tagId) {
+          var tag = TAGS.filter(function (t) { return t.id === tagId; })[0];
+          return tag ? '#' + tag.name : '';
+        }).filter(Boolean).join(' ');
+        if (tagText) {
+          var tagEl = document.createElementNS(SVG_NS, 'text');
+          tagEl.setAttribute('class', 'node-tag-text');
+          tagEl.setAttribute('x', node.x + 6);
+          tagEl.setAttribute('y', node.y + node.height - 5);
+          tagEl.textContent = tagText;
+          svg.appendChild(tagEl);
+        }
       }
 
       node.children.forEach(function (edge) {
@@ -2118,6 +2450,219 @@
     pendingConfirmAction = null;
   }
 
+  // ===== Теги =====
+
+  // Відкриває вікно тегів. Якщо вибрано прямокутник — запам'ятовує його як
+  // ціль для можливої вставки тега (кнопка «Вставити»); інакше вставка
+  // недоступна (можна лише переглядати/редагувати/видаляти теги).
+  function openTagsModal() {
+    tagInsertMode = false;
+    tagInsertTarget = (selection.type === 'node')
+      ? { sentenceIndex: selection.sentenceIndex, nodeId: selection.nodeId }
+      : null;
+    insertTagModeBtn.classList.remove('active');
+    insertTagModeBtn.disabled = !tagInsertTarget;
+    showTagsMainView();
+    renderTagsList();
+    tagsModal.classList.remove('hidden');
+    newTagInput.value = '';
+  }
+
+  function closeTagsModal() {
+    tagsModal.classList.add('hidden');
+    tagInsertMode = false;
+    tagInsertTarget = null;
+    insertTagModeBtn.classList.remove('active');
+  }
+
+  function showTagsMainView() {
+    tagNodesView.classList.add('hidden');
+    tagsMainView.classList.remove('hidden');
+  }
+
+  // Малює список усіх тегів у вікні: назва (клікабельна), перейменування,
+  // видалення. Виклик після будь-якої зміни списку тегів.
+  function renderTagsList() {
+    tagsList.innerHTML = '';
+    if (!TAGS.length) {
+      var empty = document.createElement('div');
+      empty.className = 'tags-empty';
+      empty.textContent = 'Поки що немає жодного тега.';
+      tagsList.appendChild(empty);
+      return;
+    }
+    TAGS.forEach(function (tag) {
+      var row = document.createElement('div');
+      row.className = 'tag-row';
+
+      var nameBtn = document.createElement('button');
+      nameBtn.className = 'tag-row-name';
+      nameBtn.textContent = '#' + tag.name;
+      nameBtn.title = tag.name;
+      nameBtn.addEventListener('click', function () {
+        if (tagInsertMode && tagInsertTarget) {
+          assignTagToTarget(tag.id);
+        } else {
+          showTagNodesList(tag.id);
+        }
+      });
+      row.appendChild(nameBtn);
+
+      var renameBtn = document.createElement('button');
+      renameBtn.className = 'tag-row-btn';
+      renameBtn.title = 'Перейменувати тег';
+      renameBtn.textContent = '✏';
+      renameBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        startRenameTag(row, tag);
+      });
+      row.appendChild(renameBtn);
+
+      var deleteBtn = document.createElement('button');
+      deleteBtn.className = 'tag-row-btn tag-delete-btn';
+      deleteBtn.title = 'Видалити тег';
+      deleteBtn.textContent = '🗑';
+      deleteBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        showConfirm('Видалити тег «' + tag.name + '»? Він буде знятий з усіх прямокутників.', function () {
+          deleteTag(tag.id);
+        });
+      });
+      row.appendChild(deleteBtn);
+
+      tagsList.appendChild(row);
+    });
+  }
+
+  // Замінює рядок тега на поле вводу для перейменування «на місці».
+  function startRenameTag(row, tag) {
+    row.innerHTML = '';
+    var renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.className = 'tag-rename-input';
+    renameInput.value = tag.name;
+    renameInput.addEventListener('click', function (e) { e.stopPropagation(); });
+    var commit = function () {
+      var val = renameInput.value.trim();
+      if (val) tag.name = val;
+      renderTagsList();
+      renderAll();
+    };
+    renameInput.addEventListener('blur', commit);
+    renameInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); renameInput.blur(); }
+      if (e.key === 'Escape') { e.preventDefault(); renderTagsList(); }
+    });
+    row.appendChild(renameInput);
+    renameInput.focus();
+    renameInput.select();
+  }
+
+  // Видаляє тег глобально: із самого списку тегів і з усіх прямокутників,
+  // які його використовували, в усіх графічних реченнях.
+  function deleteTag(tagId) {
+    TAGS = TAGS.filter(function (t) { return t.id !== tagId; });
+    STORAGE.sentences.forEach(function (sentence) {
+      (function walk(node) {
+        if (node.tags && node.tags.length) {
+          node.tags = node.tags.filter(function (id) { return id !== tagId; });
+        }
+        node.children.forEach(function (edge) { walk(edge.node); });
+      })(sentence.root);
+    });
+    renderTagsList();
+    renderAll();
+  }
+
+  // Показує список прямокутників (у всіх графічних реченнях), до яких
+  // застосовано вибраний тег.
+  function showTagNodesList(tagId) {
+    var tag = TAGS.filter(function (t) { return t.id === tagId; })[0];
+    if (!tag) return;
+    tagNodesTitle.textContent = '#' + tag.name;
+    tagNodesList.innerHTML = '';
+    var matches = [];
+    STORAGE.sentences.forEach(function (sentence, sentenceIndex) {
+      (function walk(node) {
+        if (node.tags && node.tags.indexOf(tagId) !== -1) {
+          matches.push({ sentenceIndex: sentenceIndex, nodeId: node.id, text: node.text });
+        }
+        node.children.forEach(function (edge) { walk(edge.node); });
+      })(sentence.root);
+    });
+    if (!matches.length) {
+      var empty = document.createElement('div');
+      empty.className = 'tags-empty';
+      empty.textContent = 'Цей тег ще не застосовано до жодного прямокутника.';
+      tagNodesList.appendChild(empty);
+    } else {
+      matches.forEach(function (m) {
+        var item = document.createElement('button');
+        item.className = 'tag-node-item';
+        item.textContent = '«' + m.text + '» (речення ' + (m.sentenceIndex + 1) + ')';
+        item.addEventListener('click', function () {
+          navigateToNode(m.sentenceIndex, m.nodeId);
+        });
+        tagNodesList.appendChild(item);
+      });
+    }
+    tagsMainView.classList.add('hidden');
+    tagNodesView.classList.remove('hidden');
+  }
+
+  // Обирає прямокутник на канві та прокручує/масштабує до нього вигляд —
+  // використовується при переході зі списку прямокутників конкретного тега.
+  function navigateToNode(sentenceIndex, nodeId) {
+    closeTagsModal();
+    selectNode(sentenceIndex, nodeId);
+    // Елемент ще не в DOM одразу після selectNode (renderAll всередині нього
+    // перебудовує SVG асинхронно відносно поточного кадру не є, але про
+    // всяк випадок чекаємо наступний кадр перед пошуком елемента).
+    requestAnimationFrame(function () {
+      var el = list.querySelector(
+        '.word-box[data-sentence-index="' + sentenceIndex + '"][data-node-id="' + nodeId + '"]'
+      );
+      if (el && el.scrollIntoView) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      }
+    });
+  }
+
+  // Призначає обраний тег прямокутнику, зафіксованому при відкритті вікна
+  // (tagInsertTarget), і закриває вікно тегів.
+  function assignTagToTarget(tagId) {
+    if (!tagInsertTarget) return;
+    var sentence = STORAGE.sentences[tagInsertTarget.sentenceIndex];
+    var node = sentence ? findNode(sentence.root, tagInsertTarget.nodeId) : null;
+    if (node) {
+      node.tags = node.tags || [];
+      if (node.tags.indexOf(tagId) === -1) node.tags.push(tagId);
+    }
+    closeTagsModal();
+    renderAll();
+  }
+
+  tagsBtn.addEventListener('click', openTagsModal);
+  tagsCloseBtn.addEventListener('click', closeTagsModal);
+  tagsBackBtn.addEventListener('click', showTagsMainView);
+
+  addTagBtn.addEventListener('click', function () {
+    var name = newTagInput.value.trim();
+    if (!name) return;
+    TAGS.push({ id: nextTagId++, name: name });
+    newTagInput.value = '';
+    renderTagsList();
+  });
+  newTagInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); addTagBtn.click(); }
+  });
+
+  insertTagModeBtn.addEventListener('click', function () {
+    if (!tagInsertTarget) return;
+    tagInsertMode = !tagInsertMode;
+    insertTagModeBtn.classList.toggle('active', tagInsertMode);
+  });
+
   function setCurrentLineType(lineType) {
     currentLineType = lineType;
     lineStyleButtons.forEach(function (btn) {
@@ -2148,7 +2693,6 @@
       var sentence = STORAGE.sentences[selection.sentenceIndex];
       var node = sentence ? findNode(sentence.root, selection.nodeId) : null;
       if (!node) { clearSelection(); return; }
-      targetLabel.textContent = '«' + node.text + '»';
       return;
     }
     if (selection.type === 'edge') {
@@ -2156,14 +2700,11 @@
       var parent = edgeSentence ? findNode(edgeSentence.root, selection.parentId) : null;
       var edgeObj = edgeSentence ? findEdge(edgeSentence.root, selection.parentId, selection.childId) : null;
       if (!parent || !edgeObj) { clearSelection(); return; }
-      targetLabel.textContent = 'лінія «' + parent.text + '» → «' + edgeObj.node.text + '»';
       return;
     }
     if (selection.type === 'group') {
-      targetLabel.textContent = 'рамка групування («✏» — заголовок, «+» — прямокутник праворуч)';
       return;
     }
-    targetLabel.textContent = 'новий термін';
   }
 
   function renderAll() {
