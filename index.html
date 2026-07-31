@@ -69,6 +69,16 @@
     */
     position: fixed;
     inset: 0;
+    /* На планшетах (iPad/Android) саме ця властивість критична: коли
+       з'являється екранна клавіатура, --app-height (рахується у JS через
+       window.visualViewport) звужується до реально видимої висоти екрана
+       над клавіатурою. Це «стискає» лише .content-scroll (canvasZoom)
+       через flex, а верхня й нижня панелі лишаються на своїх місцях —
+       замість того, щоб браузер сам панорамував (прокручував) увесь
+       застосунок, аби підняти поле вводу над клавіатурою. Якщо JS ще не
+       відпрацював або visualViewport недоступний — використовується
+       звичайні 100% (inset: 0 як і раніше). */
+    height: var(--app-height, 100%);
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
@@ -627,7 +637,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.10</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.13.11</span></h1>
       </header>
 
       <div class="panel">
@@ -2405,6 +2415,33 @@
 
   zoomInBtn.addEventListener('click', function () { setZoom(zoomLevel + ZOOM_STEP); });
   zoomOutBtn.addEventListener('click', function () { setZoom(zoomLevel - ZOOM_STEP); });
+
+  // На планшетах (iPad/Android) екранна клавіатура раніше не була ніяк
+  // враховано: браузер сам вирішував, як «підняти» поле вводу над
+  // клавіатурою, і найчастіше панорамував (прокручував) увесь застосунок —
+  // разом з верхньою й нижньою панелями, хоча прокручуватись мало б лише
+  // тло/канва з графічними реченнями. window.visualViewport дає реальну
+  // видиму висоту екрана (без частини, зайнятої клавіатурою) — вона
+  // записується в CSS-змінну --app-height на <html>, від якої залежить
+  // висота <body> (див. CSS). Коли клавіатура з'являється, --app-height
+  // зменшується → body звужується → .content-scroll (flex: 1 1 auto) теж
+  // звужується і лишається прокручуваним (overflow: auto) в межах реально
+  // видимої області, а topbar/statusbar фізично не рухаються.
+  function initAdaptiveViewportHeight() {
+    var vv = window.visualViewport;
+    function applyHeight() {
+      var h = vv ? vv.height : window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', h + 'px');
+    }
+    if (vv) {
+      vv.addEventListener('resize', applyHeight);
+      vv.addEventListener('scroll', applyHeight);
+    } else {
+      window.addEventListener('resize', applyHeight);
+    }
+    applyHeight();
+  }
+  initAdaptiveViewportHeight();
 
   setZoom(zoomLevel);
   setCurrentLineType(currentLineType);
