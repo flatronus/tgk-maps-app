@@ -824,7 +824,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.14.1</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.14.2</span></h1>
       </header>
 
       <div class="panel">
@@ -1304,6 +1304,18 @@
 
     var cursorY = ROW_PAD;
 
+    // Рекурсивно зсуває вниз (на delta) уже розраховані Y-координати вузла
+    // та всіх його нащадків — використовується, коли власна висота вузла
+    // (після перенесення тексту) виявляється більшою за простір, відведений
+    // під його дітей, і піддерево потрібно «протиснути» вниз, щоб не
+    // накластися на попередній сусідній прямокутник.
+    function shiftSubtreeY(node, delta) {
+      node.y += delta;
+      node.children.forEach(function (edge) {
+        if (typeof edge.node.y === 'number') shiftSubtreeY(edge.node, delta);
+      });
+    }
+
     function place(node) {
       // Якщо цей вузол — перший член якоїсь рамки, резервуємо місце зверху
       // (щоб не наїхати на попередній, не пов'язаний із рамкою прямокутник);
@@ -1327,6 +1339,7 @@
         node.y = cursorY;
         cursorY += node.height + SIBLING_GAP;
       } else {
+        var childrenStartY = cursorY;
         normalChildren.forEach(function (edge) {
           place(edge.node);
         });
@@ -1335,6 +1348,38 @@
         var firstCenter = first.y + first.height / 2;
         var lastCenter = last.y + last.height / 2;
         node.y = (firstCenter + lastCenter) / 2 - node.height / 2;
+
+        // Реальна нижня межа простору, вже зайнятого дітьми цього вузла
+        // (без урахування проміжку SIBLING_GAP, доданого після останнього
+        // «листка»).
+        var contentBottom = cursorY - SIBLING_GAP;
+
+        // Якщо власна висота вузла (напр. після перенесення довгого тексту
+        // по словах чи додавання уточнень/тегів) виявилась більшою за
+        // висоту, яку фактично займають його прямі діти, — прямокутник
+        // самого вузла може вилізти ЗА МЕЖІ вже відведеного під це піддерево
+        // простору. Верхній виліт наліз би на вже розташований попередній
+        // сусідній прямокутник, тому в такому разі зсуваємо все піддерево
+        // (усі вкладені прямокутники) вниз рівно настільки, щоб верх вузла
+        // збігся з початком цього піддерева.
+        var topOverflow = childrenStartY - node.y;
+        if (topOverflow > 0) {
+          normalChildren.forEach(function (edge) {
+            shiftSubtreeY(edge.node, topOverflow);
+          });
+          node.y += topOverflow;
+          contentBottom += topOverflow;
+          cursorY += topOverflow;
+        }
+
+        // Нижній виліт (вузол виступає нижче за останнього дитячого
+        // прямокутника) не потребує зсуву вже розташованих елементів —
+        // достатньо розширити зарезервований курсор, щоб наступний сусідній
+        // прямокутник просто розташувався нижче й не наклався.
+        var bottomOverflow = (node.y + node.height) - contentBottom;
+        if (bottomOverflow > 0) {
+          cursorY += bottomOverflow;
+        }
       }
 
       cursorY += (boundaryExtras.after[node.id] || 0);
