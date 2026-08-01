@@ -346,6 +346,42 @@
     gap: 6px;
   }
 
+  .sync-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: 1px solid var(--grid-line-strong);
+    color: var(--ink-dim);
+    padding: 4px 10px;
+    font-size: 11px;
+    text-transform: none;
+    letter-spacing: normal;
+    border-radius: 3px;
+  }
+  .sync-btn:hover { color: var(--ink); border-color: var(--ink-dim); }
+
+  .sync-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ink-dim);
+    flex: 0 0 auto;
+  }
+  .sync-dot.idle { background: var(--ink-dim); }
+  .sync-dot.connecting, .sync-dot.syncing { background: var(--edge-selected); }
+  .sync-dot.online { background: var(--accent); }
+  .sync-dot.error { background: var(--danger); }
+
+  .sync-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--ink-dim);
+    margin-bottom: 12px;
+  }
+
   .zoom-btn {
     width: 24px;
     height: 24px;
@@ -835,7 +871,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.15.2</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.16.0</span></h1>
       </header>
 
       <div class="panel">
@@ -879,6 +915,10 @@
   <div class="statusbar">
     <div class="wrap">
       <span id="countLabel">Речень додано: 0</span>
+      <button class="sync-btn" id="syncBtn" title="Синхронізація між пристроями">
+        <span class="sync-dot" id="syncDot"></span>
+        <span id="syncBtnLabel">Синхронізація</span>
+      </button>
       <div class="zoom-controls">
         <button class="zoom-btn" id="zoomOutBtn" title="Зменшити">−</button>
         <span id="zoomLabel">100%</span>
@@ -925,6 +965,36 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="syncModal">
+    <div class="modal-box tags-modal-box">
+      <div class="tags-modal-header">
+        <h3>Синхронізація</h3>
+        <button class="modal-close-btn" id="syncCloseBtn" title="Закрити">✕</button>
+      </div>
+
+      <p style="margin: 0 0 12px; font-size: 12.5px; line-height: 1.5; color: var(--ink-dim);">
+        Введіть однаковий код доступу на всіх пристроях (планшет, комп'ютер),
+        щоб графічні речення автоматично синхронізувались між ними через
+        хмару. Код — це як пароль: нікому його не повідомляйте.
+      </p>
+
+      <div class="sync-status-row">
+        <span class="sync-dot" id="syncModalDot"></span>
+        <span id="syncStatusText">Синхронізацію не налаштовано</span>
+      </div>
+
+      <div class="tags-new-row">
+        <input type="text" id="syncCodeInput" placeholder="Код доступу…" autocomplete="off">
+      </div>
+      <div class="tags-actions-row" style="display: flex; gap: 8px;">
+        <button id="syncSaveBtn" style="flex: 1;">Зберегти й підключити</button>
+      </div>
+      <div class="tags-actions-row">
+        <button id="syncDisconnectBtn">Відключити синхронізацію на цьому пристрої</button>
+      </div>
+    </div>
+  </div>
+
   <div id="dragInsertIndicator" class="drag-insert-indicator hidden"></div>
 
 <script>
@@ -939,6 +1009,141 @@
   // Кожен прямокутник (node.tags) зберігає лише id застосованих до нього тегів.
   var TAGS = [];
   var nextTagId = 1;
+
+  // ===== Збереження: локально (IndexedDB) + синхронізація між пристроями (Firestore) =====
+  //
+  // IndexedDB працює завжди й одразу, без інтернету — це «страховка» від
+  // втрати роботи при оновленні сторінки чи закритті вкладки. Firestore —
+  // опційний (лише якщо на пристрої введено код доступу в вікні
+  // «Синхронізація») механізм фонового перенесення того самого знімка стану
+  // між пристроями. Прапорець applyingRemoteUpdate потрібен, щоб застосування
+  // щойно отриманих ззовні даних не викликало зайве відправлення їх назад
+  // у хмару (нескінченне відлуння).
+  var SYNC_CODE_KEY = 'krLenikSyncAccessCode';
+  var IDB_NAME = 'kreslenik-store';
+  var IDB_STORE = 'kv';
+  var IDB_SNAPSHOT_KEY = 'snapshot';
+  var idbOpenPromise = null;
+  var applyingRemoteUpdate = false;
+  var saveDebounceTimer = null;
+  var lastKnownUpdatedAt = 0;
+  var cloudSyncApi = null;
+
+  function openIdb() {
+    if (idbOpenPromise) return idbOpenPromise;
+    idbOpenPromise = new Promise(function (resolve, reject) {
+      if (!('indexedDB' in window)) { reject(new Error('IndexedDB недоступний у цьому браузері')); return; }
+      var req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(IDB_STORE); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+    return idbOpenPromise;
+  }
+  function idbSet(key, value) {
+    return openIdb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(value, key);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function idbGet(key) {
+    return openIdb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(IDB_STORE, 'readonly');
+        var req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { reject(req.error); };
+      });
+    });
+  }
+
+  // Знімок усього стану застосунку — усі графічні речення, теги й лічильники
+  // id. JSON-round-trip (parse(stringify(...))) заодно прибирає undefined-
+  // значення (напр. edge.frameGroupId, коли рамки немає) — Firestore не
+  // приймає поля зі значенням undefined.
+  function serializeSnapshot() {
+    var raw = {
+      v: 1,
+      updatedAt: Date.now(),
+      storage: STORAGE,
+      tags: TAGS,
+      nextTagId: nextTagId,
+      nextGroupId: nextGroupId
+    };
+    return JSON.parse(JSON.stringify(raw));
+  }
+
+  function applySnapshot(snap) {
+    if (!snap || !snap.storage) return;
+    STORAGE.sentences = snap.storage.sentences || [];
+    STORAGE.nextNodeId = snap.storage.nextNodeId || 1;
+    TAGS = snap.tags || [];
+    nextTagId = snap.nextTagId || 1;
+    nextGroupId = snap.nextGroupId || 1;
+  }
+
+  // Викликається наприкінці кожного renderAll() — тобто після будь-якої
+  // значущої зміни стану (додавання/видалення/редагування/переставляння
+  // тощо). Зберігає миттєво локально (IndexedDB) і, з невеликою затримкою
+  // (щоб не «стріляти» в хмару на кожну дрібну зміну поспіль), відправляє в
+  // Firestore, якщо синхронізацію налаштовано.
+  function scheduleSave() {
+    if (applyingRemoteUpdate) return; // це власне відлуння щойно застосованих зовнішніх даних
+    var snapshot = serializeSnapshot();
+    lastKnownUpdatedAt = snapshot.updatedAt;
+    idbSet(IDB_SNAPSHOT_KEY, snapshot).catch(function (err) {
+      console.warn('Не вдалося зберегти локально (IndexedDB):', err);
+    });
+    clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = setTimeout(function () {
+      pushToCloud(snapshot);
+    }, 800);
+  }
+
+  function pushToCloud(snapshot) {
+    var code = localStorage.getItem(SYNC_CODE_KEY);
+    if (!code) return;
+    withCloudSync(function (api) {
+      setSyncStatus('syncing');
+      api.push(code, snapshot).then(function () {
+        setSyncStatus('online');
+      }).catch(function (err) {
+        setSyncStatus('error');
+        console.warn('Не вдалося синхронізувати з хмарою:', err);
+      });
+    });
+  }
+
+  // Дані, щойно отримані з іншого пристрою через Firestore. Застосовуємо
+  // лише якщо вони справді новіші за те, що вже є тут (updatedAt) — інакше,
+  // наприклад, застарілий знімок міг би перезаписати свіжі локальні зміни,
+  // зроблені офлайн.
+  function handleRemoteSnapshot(remote) {
+    if (!remote || typeof remote.updatedAt !== 'number') return;
+    if (remote.updatedAt <= lastKnownUpdatedAt) return;
+    lastKnownUpdatedAt = remote.updatedAt;
+    applyingRemoteUpdate = true;
+    applySnapshot(remote);
+    renderAll();
+    applyingRemoteUpdate = false;
+    idbSet(IDB_SNAPSHOT_KEY, remote).catch(function () {});
+    setSyncStatus('online');
+  }
+
+  // Модуль Firebase (окремий <script type="module">, підключається нижче в
+  // HTML) вантажиться асинхронно й може ще не встигнути виконатись до цього
+  // моменту — чекаємо подію 'cloudsyncready', якщо window.cloudSync ще нема.
+  function withCloudSync(callback) {
+    if (window.cloudSync) { callback(window.cloudSync); return; }
+    window.addEventListener('cloudsyncready', function handler() {
+      window.removeEventListener('cloudsyncready', handler);
+      callback(window.cloudSync);
+    });
+  }
 
   // Поточний вибір: прямокутник (type: 'node'), лінія-зв'язок (type: 'edge')
   // або рамка групування визначень (type: 'group').
@@ -989,6 +1194,17 @@
   var tagNodesTitle = document.getElementById('tagNodesTitle');
   var tagNodesList = document.getElementById('tagNodesList');
   var tagsBackBtn = document.getElementById('tagsBackBtn');
+
+  var syncBtn = document.getElementById('syncBtn');
+  var syncDot = document.getElementById('syncDot');
+  var syncBtnLabel = document.getElementById('syncBtnLabel');
+  var syncModal = document.getElementById('syncModal');
+  var syncCloseBtn = document.getElementById('syncCloseBtn');
+  var syncModalDot = document.getElementById('syncModalDot');
+  var syncStatusText = document.getElementById('syncStatusText');
+  var syncCodeInput = document.getElementById('syncCodeInput');
+  var syncSaveBtn = document.getElementById('syncSaveBtn');
+  var syncDisconnectBtn = document.getElementById('syncDisconnectBtn');
 
   // Чи активний режим «Вставити тег» у вікні тегів: якщо так, наступний клік
   // по назві тега в списку призначає цей тег вибраному прямокутнику
@@ -2922,6 +3138,58 @@
     insertTagModeBtn.classList.toggle('active', tagInsertMode);
   });
 
+  // ===== Вікно синхронізації =====
+
+  // status: 'idle' (код не введено) | 'connecting' | 'syncing' | 'online' | 'error'
+  function setSyncStatus(status) {
+    var labels = {
+      idle: 'Синхронізацію не налаштовано',
+      connecting: 'Підключення…',
+      syncing: 'Синхронізується…',
+      online: 'Синхронізовано',
+      error: 'Помилка синхронізації'
+    };
+    var text = labels[status] || labels.idle;
+    syncDot.className = 'sync-dot ' + status;
+    syncModalDot.className = 'sync-dot ' + status;
+    syncStatusText.textContent = text;
+    syncBtnLabel.textContent = status === 'idle' ? 'Синхронізація' : text;
+  }
+
+  function connectCloudSync(code) {
+    withCloudSync(function (api) {
+      setSyncStatus('connecting');
+      api.connect(code, handleRemoteSnapshot, setSyncStatus);
+    });
+  }
+
+  function openSyncModal() {
+    syncCodeInput.value = localStorage.getItem(SYNC_CODE_KEY) || '';
+    syncModal.classList.remove('hidden');
+  }
+  function closeSyncModal() {
+    syncModal.classList.add('hidden');
+  }
+
+  syncBtn.addEventListener('click', openSyncModal);
+  syncCloseBtn.addEventListener('click', closeSyncModal);
+
+  syncSaveBtn.addEventListener('click', function () {
+    var code = syncCodeInput.value.trim();
+    if (!code) return;
+    localStorage.setItem(SYNC_CODE_KEY, code);
+    connectCloudSync(code);
+    closeSyncModal();
+  });
+
+  syncDisconnectBtn.addEventListener('click', function () {
+    localStorage.removeItem(SYNC_CODE_KEY);
+    withCloudSync(function (api) { api.disconnect(); });
+    setSyncStatus('idle');
+    syncCodeInput.value = '';
+    closeSyncModal();
+  });
+
   function setCurrentLineType(lineType) {
     currentLineType = lineType;
     lineStyleButtons.forEach(function (btn) {
@@ -2997,6 +3265,7 @@
 
     countLabel.textContent = 'Речень додано: ' + STORAGE.sentences.length;
     updateTargetIndicator();
+    scheduleSave();
   }
 
   function addBox() {
@@ -3245,7 +3514,24 @@
 
   setZoom(zoomLevel);
   setCurrentLineType(currentLineType);
-  renderAll();
+
+  // Перед першим рендером пробуємо відновити збережений локально знімок
+  // стану (IndexedDB) — так закриття вкладки чи оновлення сторінки більше
+  // не стирає роботу. Якщо на цьому пристрої вже введено код доступу —
+  // одразу підключаємось до фонової синхронізації з хмарою.
+  idbGet(IDB_SNAPSHOT_KEY).then(function (snapshot) {
+    if (snapshot) {
+      applySnapshot(snapshot);
+      lastKnownUpdatedAt = snapshot.updatedAt || 0;
+    }
+  }).catch(function (err) {
+    console.warn('Не вдалося прочитати локальне сховище (IndexedDB):', err);
+  }).then(function () {
+    renderAll();
+    var savedCode = localStorage.getItem(SYNC_CODE_KEY);
+    if (savedCode) connectCloudSync(savedCode);
+    else setSyncStatus('idle');
+  });
 })();
 
 // Реєстрація service worker для роботи застосунку як PWA (офлайн-доступ,
@@ -3258,6 +3544,73 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     });
   });
 }
+</script>
+
+<!--
+  Firebase (Firestore) підключається окремим <script type="module">, а не
+  всередині основного скрипта вище. Модульні скрипти виконуються асинхронно
+  (як defer) і мають власну ізольовану область видимості — щоб не міняти тип
+  основного (класичного, синхронного) скрипта застосунку та не ризикувати
+  його поведінкою, Firebase-логіка винесена сюди й публікує невеликий API
+  через window.cloudSync + подію 'cloudsyncready', яку основний скрипт чекає
+  (див. withCloudSync() у ньому).
+-->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+  import {
+    getFirestore, doc, setDoc, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+  var firebaseConfig = {
+    apiKey: "AIzaSyDRd0eXg5Y74MY7cUF9xAdAZLBQyJxIEqQ",
+    authDomain: "tgk-maps-app.firebaseapp.com",
+    projectId: "tgk-maps-app",
+    storageBucket: "tgk-maps-app.firebasestorage.app",
+    messagingSenderId: "330086974521",
+    appId: "1:330086974521:web:eb3ab884bfd87fb13b79e8"
+  };
+
+  var app = initializeApp(firebaseConfig);
+  var db = getFirestore(app);
+  var unsubscribe = null;
+
+  function sanitizeCode(code) {
+    return String(code == null ? '' : code).trim();
+  }
+
+  window.cloudSync = {
+    // Підписується на зміни документа boards/{код доступу}. onRemoteChange
+    // викликається з даними документа щоразу, коли він змінюється (включно
+    // з першим отриманням при підключенні). onStatus повідомляє про стан
+    // з'єднання ('connecting' | 'online' | 'error').
+    connect: function (accessCode, onRemoteChange, onStatus) {
+      if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+      var code = sanitizeCode(accessCode);
+      if (!code) return;
+      var ref = doc(db, 'boards', code);
+      if (onStatus) onStatus('connecting');
+      unsubscribe = onSnapshot(ref, function (snap) {
+        if (onStatus) onStatus('online');
+        if (snap.exists()) onRemoteChange(snap.data());
+      }, function (err) {
+        console.warn('Firestore onSnapshot помилка:', err);
+        if (onStatus) onStatus('error');
+      });
+    },
+    disconnect: function () {
+      if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+    },
+    // Повністю перезаписує документ boards/{код доступу} переданим знімком
+    // стану (весь STORAGE + теги + лічильники).
+    push: function (accessCode, data) {
+      var code = sanitizeCode(accessCode);
+      if (!code) return Promise.reject(new Error('Немає коду доступу'));
+      var ref = doc(db, 'boards', code);
+      return setDoc(ref, data);
+    }
+  };
+
+  window.dispatchEvent(new Event('cloudsyncready'));
 </script>
 </body>
 </html>
