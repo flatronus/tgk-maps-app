@@ -284,6 +284,12 @@
     gap: 8px;
   }
 
+  .line-style-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   .row-actions {
     display: flex;
     align-items: center;
@@ -780,6 +786,35 @@
   .tag-row-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
   .tag-row-btn.tag-delete-btn:hover { color: var(--danger); border-color: var(--danger); }
 
+  .project-item-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    color: var(--ink);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    text-align: left;
+    text-transform: none;
+    letter-spacing: normal;
+    cursor: pointer;
+    padding: 4px 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .project-item-name:hover { text-decoration: underline; }
+  .tag-row.project-item.current {
+    border-color: var(--accent);
+    background: rgba(111, 214, 201, 0.08);
+  }
+  .project-item-current-badge {
+    flex: 0 0 auto;
+    font-size: 10px;
+    color: var(--accent);
+    text-transform: none;
+  }
+
   .tag-nodes-header {
     display: flex;
     align-items: center;
@@ -842,7 +877,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.16.1</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.17.0</span></h1>
       </header>
 
       <div class="panel">
@@ -853,16 +888,19 @@
           <button id="frameBtn" title="Рамка визначень">⬚</button>
         </div>
         <div class="line-style-row" id="lineStyleRow">
-          <div class="line-style-icons">
-            <button class="line-style-btn" data-line-type="solid" title="Суцільна лінія">
-              <svg viewBox="0 0 48 20" width="48" height="20"><line x1="4" y1="10" x2="44" y2="10" stroke="currentColor" stroke-width="2"/></svg>
-            </button>
-            <button class="line-style-btn" data-line-type="dashed" title="Пунктирна лінія">
-              <svg viewBox="0 0 48 20" width="48" height="20"><line x1="4" y1="10" x2="44" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="5 4"/></svg>
-            </button>
-            <button class="line-style-btn" data-line-type="double" title="Подвійна суцільна лінія">
-              <svg viewBox="0 0 48 20" width="48" height="20"><line x1="4" y1="7" x2="44" y2="7" stroke="currentColor" stroke-width="2"/><line x1="4" y1="13" x2="44" y2="13" stroke="currentColor" stroke-width="2"/></svg>
-            </button>
+          <div class="line-style-left">
+            <button class="row-delete-top" id="projectsBtn" title="Провідник проектів">🗂</button>
+            <div class="line-style-icons">
+              <button class="line-style-btn" data-line-type="solid" title="Суцільна лінія">
+                <svg viewBox="0 0 48 20" width="48" height="20"><line x1="4" y1="10" x2="44" y2="10" stroke="currentColor" stroke-width="2"/></svg>
+              </button>
+              <button class="line-style-btn" data-line-type="dashed" title="Пунктирна лінія">
+                <svg viewBox="0 0 48 20" width="48" height="20"><line x1="4" y1="10" x2="44" y2="10" stroke="currentColor" stroke-width="2" stroke-dasharray="5 4"/></svg>
+              </button>
+              <button class="line-style-btn" data-line-type="double" title="Подвійна суцільна лінія">
+                <svg viewBox="0 0 48 20" width="48" height="20"><line x1="4" y1="7" x2="44" y2="7" stroke="currentColor" stroke-width="2"/><line x1="4" y1="13" x2="44" y2="13" stroke="currentColor" stroke-width="2"/></svg>
+              </button>
+            </div>
           </div>
           <div class="row-actions">
             <button class="row-delete-top" id="saveBtn" title="Зберегти в хмару">💾</button>
@@ -936,6 +974,30 @@
 
   <div id="dragInsertIndicator" class="drag-insert-indicator hidden"></div>
 
+  <div class="modal-overlay hidden" id="projectsModal">
+    <div class="modal-box tags-modal-box">
+      <div class="tags-modal-header">
+        <h3>Провідник проектів</h3>
+        <button class="modal-close-btn" id="projectsCloseBtn" title="Закрити">✕</button>
+      </div>
+
+      <div class="tags-new-row">
+        <input type="text" id="newProjectItemInput" placeholder="Назва…" autocomplete="off">
+      </div>
+      <div class="tags-actions-row" style="display: flex; gap: 8px;">
+        <button id="createFolderBtn" style="flex: 1;">📁 Тека</button>
+        <button id="createProjectBtn" style="flex: 1;">🖹 Проект</button>
+      </div>
+
+      <div class="tag-nodes-header">
+        <button id="projectsBackBtn" title="Назад">← Назад</button>
+        <span id="projectsCurrentFolderTitle">Корінь</span>
+      </div>
+
+      <div id="projectsList" class="tags-list"></div>
+    </div>
+  </div>
+
 <script>
 (function () {
   "use strict";
@@ -949,23 +1011,39 @@
   var TAGS = [];
   var nextTagId = 1;
 
-  // ===== Збереження: локально (IndexedDB, автоматично) + вручну в хмару (Firestore) =====
+  // ===== Проекти: дерево тек/проектів + збереження (IndexedDB + Firestore) =====
+  //
+  // Раніше застосунок мав рівно одну канву (STORAGE/TAGS). Тепер їх може бути
+  // багато — кожен «проект» має власну канву, а «Провідник проектів»
+  // організовує проекти в теки. У кожен момент часу STORAGE/TAGS/nextTagId/
+  // nextGroupId містять вміст САМЕ ТОГО проекту, який зараз відкритий
+  // (currentProjectId) — перемикання проекту (openProject) підміняє їхній
+  // вміст і перерендерює канву.
   //
   // IndexedDB працює завжди й одразу, без інтернету — це «страховка» від
-  // втрати роботи при оновленні сторінки чи закритті вкладки: кожна значуща
-  // зміна одразу зберігається локально й ставить статус «не синхронізовано».
-  // У хмару (єдиний спільний документ Firestore) дані йдуть лише вручну —
-  // по натисканню кнопки «Зберегти» — після чого статус стає «синхронізовано».
-  // Прапорець applyingRemoteUpdate потрібен, щоб застосування щойно
-  // отриманих із хмари даних (при відкритті застосунку на іншому пристрої)
-  // не позначало стан як «не синхронізовано» — він же й так уже такий, як у хмарі.
-  var CLOUD_DOC_ID = 'main';
+  // втрати роботи: кожна значуща зміна одразу зберігається локально й
+  // ставить статус «не синхронізовано». У хмару (Firestore: одна колекція
+  // 'projects' — по документу на проект, і один документ 'meta/tree' —
+  // дерево тек/проектів) дані йдуть лише вручну, по натисканню кнопки
+  // «Зберегти». Прапорець applyingRemoteUpdate потрібен, щоб застосування
+  // щойно отриманих із хмари даних не позначало стан як «не синхронізовано»
+  // — він же й так уже такий, як у хмарі.
   var IDB_NAME = 'kreslenik-store';
   var IDB_STORE = 'kv';
-  var IDB_SNAPSHOT_KEY = 'snapshot';
+  var IDB_TREE_KEY = 'projectsTree';
+  var IDB_LEGACY_SNAPSHOT_KEY = 'snapshot'; // для міграції зі старої однопроєктної версії
+  var CURRENT_PROJECT_ID_KEY = 'krLenikCurrentProjectId';
   var idbOpenPromise = null;
   var applyingRemoteUpdate = false;
   var isSynced = false;
+  var contentUnsubscribe = null;
+
+  // Дерево тек і проектів: item = { id, type: 'folder' | 'project', name, parentId }.
+  // parentId === null означає «в корені» (не всередині жодної теки).
+  var PROJECTS = { nextId: 1, items: [] };
+  var currentProjectId = null;
+
+  function projectContentKey(id) { return 'project:' + id; }
 
   function openIdb() {
     if (idbOpenPromise) return idbOpenPromise;
@@ -998,11 +1076,21 @@
       });
     });
   }
+  function idbDelete(key) {
+    return openIdb().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).delete(key);
+        tx.oncomplete = function () { resolve(); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
 
-  // Знімок усього стану застосунку — усі графічні речення, теги й лічильники
-  // id. JSON-round-trip (parse(stringify(...))) заодно прибирає undefined-
-  // значення (напр. edge.frameGroupId, коли рамки немає) — Firestore не
-  // приймає поля зі значенням undefined.
+  // Знімок вмісту ПОТОЧНОГО проекту — усі графічні речення, теги й
+  // лічильники id. JSON-round-trip (parse(stringify(...))) заодно прибирає
+  // undefined-значення (напр. edge.frameGroupId, коли рамки немає) —
+  // Firestore не приймає поля зі значенням undefined.
   function serializeSnapshot() {
     var raw = {
       v: 1,
@@ -1024,23 +1112,51 @@
     nextGroupId = snap.nextGroupId || 1;
   }
 
+  function serializeTree() {
+    var raw = { updatedAt: Date.now(), nextId: PROJECTS.nextId, items: PROJECTS.items };
+    return JSON.parse(JSON.stringify(raw));
+  }
+  function applyTree(remote) {
+    if (!remote) return;
+    PROJECTS.nextId = remote.nextId || 1;
+    PROJECTS.items = remote.items || [];
+  }
+
   // Викликається наприкінці кожного renderAll() — тобто після будь-якої
-  // значущої зміни стану (додавання/видалення/редагування/переставляння
-  // тощо). Зберігає миттєво локально (IndexedDB) і позначає стан як
-  // «не синхронізовано» (доки користувач сам не натисне «Зберегти»).
+  // значущої зміни вмісту ПОТОЧНОГО проекту. Зберігає миттєво локально
+  // (IndexedDB) і позначає стан як «не синхронізовано» (доки користувач сам
+  // не натисне «Зберегти»).
   function scheduleSave() {
+    if (!currentProjectId) return;
     var snapshot = serializeSnapshot();
-    idbSet(IDB_SNAPSHOT_KEY, snapshot).catch(function (err) {
+    idbSet(projectContentKey(currentProjectId), snapshot).catch(function (err) {
       console.warn('Не вдалося зберегти локально (IndexedDB):', err);
     });
     if (!applyingRemoteUpdate) setSyncStatus(false);
   }
 
-  // Натискання кнопки «Зберегти» — єдиний момент, коли дані йдуть у хмару.
+  // Викликається після будь-якої зміни дерева тек/проектів (створення,
+  // перейменування, видалення) — так само зберігає локально й позначає
+  // стан як «не синхронізовано».
+  function scheduleTreeSave() {
+    var tree = serializeTree();
+    idbSet(IDB_TREE_KEY, tree).catch(function (err) {
+      console.warn('Не вдалося зберегти дерево проектів локально (IndexedDB):', err);
+    });
+    if (!applyingRemoteUpdate) setSyncStatus(false);
+  }
+
+  // Натискання кнопки «Зберегти» — єдиний момент, коли дані йдуть у хмару:
+  // і вміст поточного проекту, і дерево тек/проектів (щоб інші пристрої
+  // побачили і новий вміст, і будь-які створені/перейменовані/видалені
+  // проекти чи теки).
   function saveToCloud() {
-    var snapshot = serializeSnapshot();
+    var snapshot = currentProjectId ? serializeSnapshot() : null;
+    var tree = serializeTree();
     withCloudSync(function (api) {
-      api.push(CLOUD_DOC_ID, snapshot).then(function () {
+      var jobs = [api.push('meta', 'tree', tree)];
+      if (currentProjectId) jobs.push(api.push('projects', currentProjectId, snapshot));
+      Promise.all(jobs).then(function () {
         setSyncStatus(true);
       }).catch(function (err) {
         console.warn('Не вдалося синхронізувати з хмарою:', err);
@@ -1048,18 +1164,41 @@
     });
   }
 
-  // Дані, отримані з хмари (напр. при відкритті застосунку на іншому
-  // пристрої, куди раніше зберегли з іншого). Якщо вони новіші за те, що є
-  // тут, — застосовуємо; після застосування дані тут точно збігаються з
-  // хмарою, тож статус одразу «синхронізовано».
-  function handleRemoteSnapshot(remote) {
-    if (!remote || typeof remote.updatedAt !== 'number') return;
+  // Дерево тек/проектів, отримане з хмари (напр. якщо на іншому пристрої
+  // створили новий проект чи теку). Застосовуємо одразу — після цього дані
+  // тут точно збігаються з хмарою, тож статус «синхронізовано». Якщо вікно
+  // «Провідник проектів» зараз відкрите — оновлюємо і його список.
+  function handleRemoteTree(remote) {
+    applyingRemoteUpdate = true;
+    applyTree(remote);
+    applyingRemoteUpdate = false;
+    idbSet(IDB_TREE_KEY, remote).catch(function () {});
+    if (!projectsModal.classList.contains('hidden')) renderProjectsList();
+    setSyncStatus(true);
+  }
+
+  // Вміст проекту, отриманий з хмари. Застосовуємо, лише якщо це саме той
+  // проект, який зараз відкритий на цьому пристрої.
+  function handleRemoteContent(projectId, remote) {
+    if (projectId !== currentProjectId) return;
     applyingRemoteUpdate = true;
     applySnapshot(remote);
     renderAll();
     applyingRemoteUpdate = false;
-    idbSet(IDB_SNAPSHOT_KEY, remote).catch(function () {});
+    idbSet(projectContentKey(projectId), remote).catch(function () {});
     setSyncStatus(true);
+  }
+
+  // Підписується на зміни вмісту проекту з заданим id (відписуючись від
+  // попередньої підписки, якщо була) — викликається при відкритті
+  // застосунку та при кожному перемиканні на інший проект.
+  function watchProjectContent(id) {
+    if (contentUnsubscribe) { contentUnsubscribe(); contentUnsubscribe = null; }
+    withCloudSync(function (api) {
+      contentUnsubscribe = api.watch('projects', id, function (data) {
+        handleRemoteContent(id, data);
+      });
+    });
   }
 
   function setSyncStatus(synced) {
@@ -1130,6 +1269,15 @@
   var tagsBackBtn = document.getElementById('tagsBackBtn');
 
   var saveBtn = document.getElementById('saveBtn');
+  var projectsBtn = document.getElementById('projectsBtn');
+  var projectsModal = document.getElementById('projectsModal');
+  var projectsCloseBtn = document.getElementById('projectsCloseBtn');
+  var newProjectItemInput = document.getElementById('newProjectItemInput');
+  var createFolderBtn = document.getElementById('createFolderBtn');
+  var createProjectBtn = document.getElementById('createProjectBtn');
+  var projectsBackBtn = document.getElementById('projectsBackBtn');
+  var projectsCurrentFolderTitle = document.getElementById('projectsCurrentFolderTitle');
+  var projectsList = document.getElementById('projectsList');
   var syncStatusText = document.getElementById('syncStatusText');
 
   // Чи активний режим «Вставити тег» у вікні тегів: якщо так, наступний клік
@@ -3064,6 +3212,238 @@
     insertTagModeBtn.classList.toggle('active', tagInsertMode);
   });
 
+  // ===== Провідник проектів =====
+
+  // Тека, вміст якої зараз показано у вікні провідника; null — корінь.
+  var explorerFolderId = null;
+
+  function getProjectChildren(parentId) {
+    return PROJECTS.items.filter(function (item) { return (item.parentId || null) === (parentId || null); });
+  }
+  function findProjectItem(id) {
+    return PROJECTS.items.filter(function (item) { return item.id === id; })[0] || null;
+  }
+  // Рекурсивно збирає id усіх нащадків теки (вкладені теки й проекти) —
+  // потрібно для каскадного видалення.
+  function collectProjectDescendantIds(folderId) {
+    var ids = [];
+    getProjectChildren(folderId).forEach(function (child) {
+      ids.push(child.id);
+      if (child.type === 'folder') ids = ids.concat(collectProjectDescendantIds(child.id));
+    });
+    return ids;
+  }
+
+  function openProjectsModal() {
+    explorerFolderId = null;
+    renderProjectsList();
+    newProjectItemInput.value = '';
+    projectsModal.classList.remove('hidden');
+  }
+  function closeProjectsModal() {
+    projectsModal.classList.add('hidden');
+  }
+
+  function renderProjectsList() {
+    var folder = explorerFolderId ? findProjectItem(explorerFolderId) : null;
+    projectsCurrentFolderTitle.textContent = folder ? folder.name : 'Корінь';
+    projectsBackBtn.disabled = !folder;
+
+    projectsList.innerHTML = '';
+    var items = getProjectChildren(explorerFolderId).slice().sort(function (a, b) {
+      // Теки — спочатку, потім проекти; в межах типу — за алфавітом.
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+      return a.name.localeCompare(b.name, 'uk');
+    });
+
+    if (!items.length) {
+      var empty = document.createElement('div');
+      empty.className = 'tags-empty';
+      empty.textContent = folder ? 'Ця тека порожня.' : 'Поки що немає жодного проекту чи теки.';
+      projectsList.appendChild(empty);
+      return;
+    }
+
+    items.forEach(function (item) {
+      var row = document.createElement('div');
+      row.className = 'tag-row project-item' + (item.id === currentProjectId ? ' current' : '');
+
+      var nameBtn = document.createElement('button');
+      nameBtn.className = 'project-item-name';
+      nameBtn.textContent = (item.type === 'folder' ? '📁 ' : '🖹 ') + item.name;
+      nameBtn.title = item.name;
+      nameBtn.addEventListener('click', function () {
+        if (item.type === 'folder') {
+          explorerFolderId = item.id;
+          renderProjectsList();
+        } else {
+          openProject(item.id);
+        }
+      });
+      row.appendChild(nameBtn);
+
+      if (item.id === currentProjectId) {
+        var badge = document.createElement('span');
+        badge.className = 'project-item-current-badge';
+        badge.textContent = 'відкрито';
+        row.appendChild(badge);
+      }
+
+      var renameBtn = document.createElement('button');
+      renameBtn.className = 'tag-row-btn';
+      renameBtn.title = 'Перейменувати';
+      renameBtn.textContent = '✏';
+      renameBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        startRenameProjectItem(row, item);
+      });
+      row.appendChild(renameBtn);
+
+      var deleteBtn = document.createElement('button');
+      deleteBtn.className = 'tag-row-btn tag-delete-btn';
+      deleteBtn.title = item.type === 'folder' ? 'Видалити теку' : 'Видалити проект';
+      deleteBtn.textContent = '🗑';
+      deleteBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        confirmDeleteProjectItem(item);
+      });
+      row.appendChild(deleteBtn);
+
+      projectsList.appendChild(row);
+    });
+  }
+
+  function startRenameProjectItem(row, item) {
+    row.innerHTML = '';
+    var renameInput = document.createElement('input');
+    renameInput.type = 'text';
+    renameInput.className = 'tag-rename-input';
+    renameInput.value = item.name;
+    renameInput.addEventListener('click', function (e) { e.stopPropagation(); });
+    var commit = function () {
+      var val = renameInput.value.trim();
+      if (val) item.name = val;
+      scheduleTreeSave();
+      renderProjectsList();
+    };
+    renameInput.addEventListener('blur', commit);
+    renameInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); renameInput.blur(); }
+      if (e.key === 'Escape') { e.preventDefault(); renderProjectsList(); }
+    });
+    row.appendChild(renameInput);
+    renameInput.focus();
+    renameInput.select();
+  }
+
+  function confirmDeleteProjectItem(item) {
+    var descendantIds = item.type === 'folder' ? collectProjectDescendantIds(item.id) : [];
+    var message = item.type === 'folder'
+      ? (descendantIds.length
+        ? 'Видалити теку «' + item.name + '» разом із вмістом (' + descendantIds.length + ' елем.)? Це незворотно.'
+        : 'Видалити порожню теку «' + item.name + '»?')
+      : 'Видалити проект «' + item.name + '»? Його канву буде втрачено безповоротно (якщо не збережено в хмару раніше).';
+    showConfirm(message, function () {
+      deleteProjectItem(item, descendantIds);
+    });
+  }
+
+  function deleteProjectItem(item, descendantIds) {
+    var idsToRemove = [item.id].concat(descendantIds || []);
+    PROJECTS.items = PROJECTS.items.filter(function (i) { return idsToRemove.indexOf(i.id) === -1; });
+    idsToRemove.forEach(function (id) {
+      idbDelete(projectContentKey(id)).catch(function () {});
+    });
+    scheduleTreeSave();
+
+    var wasCurrentDeleted = idsToRemove.indexOf(currentProjectId) !== -1;
+    renderProjectsList();
+
+    if (wasCurrentDeleted) {
+      var remainingProject = PROJECTS.items.filter(function (i) { return i.type === 'project'; })[0];
+      if (remainingProject) {
+        openProject(remainingProject.id);
+      } else {
+        createProjectInternal('Проект 1', null, true);
+      }
+    }
+  }
+
+  // Створює проект програмно (без читання поля вводу) — використовується і
+  // кнопкою «+ Проект», і як запасний варіант, коли видалено останній проект.
+  function createProjectInternal(name, parentId, openAfter) {
+    var item = { id: PROJECTS.nextId++, type: 'project', name: name, parentId: parentId || null };
+    PROJECTS.items.push(item);
+    scheduleTreeSave();
+    if (openAfter) openProject(item.id);
+    return item;
+  }
+
+  createFolderBtn.addEventListener('click', function () {
+    var name = newProjectItemInput.value.trim();
+    if (!name) return;
+    PROJECTS.items.push({ id: PROJECTS.nextId++, type: 'folder', name: name, parentId: explorerFolderId });
+    scheduleTreeSave();
+    newProjectItemInput.value = '';
+    renderProjectsList();
+  });
+
+  createProjectBtn.addEventListener('click', function () {
+    var name = newProjectItemInput.value.trim();
+    if (!name) return;
+    newProjectItemInput.value = '';
+    createProjectInternal(name, explorerFolderId, true);
+    closeProjectsModal();
+  });
+
+  newProjectItemInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); createProjectBtn.click(); }
+  });
+
+  projectsBackBtn.addEventListener('click', function () {
+    var folder = explorerFolderId ? findProjectItem(explorerFolderId) : null;
+    explorerFolderId = folder ? (folder.parentId || null) : null;
+    renderProjectsList();
+  });
+
+  projectsBtn.addEventListener('click', openProjectsModal);
+  projectsCloseBtn.addEventListener('click', closeProjectsModal);
+
+  // Перемикає активний проект: підміняє вміст STORAGE/TAGS/лічильників на
+  // вміст проекту з id, перерендерює канву й перепідписується на зміни саме
+  // цього проекту з хмари. Якщо в проекту ще немає збереженого локально
+  // вмісту (щойно створений) — канва просто порожня.
+  function openProject(id) {
+    var item = findProjectItem(id);
+    if (!item || item.type !== 'project') return;
+    idbGet(projectContentKey(id)).then(function (snapshot) {
+      if (snapshot) {
+        applySnapshot(snapshot);
+      } else {
+        STORAGE.sentences = [];
+        STORAGE.nextNodeId = 1;
+        TAGS = [];
+        nextTagId = 1;
+      }
+      currentProjectId = id;
+      localStorage.setItem(CURRENT_PROJECT_ID_KEY, String(id));
+      editingTarget = null;
+      groupTitleEdit = null;
+      input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
+      selection.type = null;
+      selection.sentenceIndex = null;
+      selection.nodeId = null;
+      selection.parentId = null;
+      selection.childId = null;
+      selection.groupId = null;
+      renderAll();
+      watchProjectContent(id);
+      closeProjectsModal();
+    }).catch(function (err) {
+      console.warn('Не вдалося завантажити проект локально (IndexedDB):', err);
+    });
+  }
+
   saveBtn.addEventListener('click', saveToCloud);
 
   function setCurrentLineType(lineType) {
@@ -3391,19 +3771,53 @@
   setZoom(zoomLevel);
   setCurrentLineType(currentLineType);
 
-  // Перед першим рендером пробуємо відновити збережений локально знімок
-  // стану (IndexedDB) — так закриття вкладки чи оновлення сторінки більше
-  // не стирає роботу. Далі одразу підключаємось до хмари, щоб автоматично
-  // підхопити зміни, які могли зберегти («Зберегти») з іншого пристрою.
-  idbGet(IDB_SNAPSHOT_KEY).then(function (snapshot) {
-    if (snapshot) applySnapshot(snapshot);
+  // Перед першим рендером відновлюємо дерево тек/проектів (IndexedDB), за
+  // потреби мігруючи стару (однопроєктну, v1.16.x) версію даних у типовий
+  // проект «Проект 1», а тоді відновлюємо вміст проекту, який був відкритий
+  // востаннє (чи створюємо проект за замовчуванням, якщо жодного немає).
+  // Далі підключаємось до хмари: постійно стежимо за деревом тек/проектів
+  // (щоб бачити нові/перейменовані/видалені деінде проекти) і за вмістом
+  // саме поточного відкритого проекту.
+  idbGet(IDB_TREE_KEY).then(function (tree) {
+    if (tree && Array.isArray(tree.items)) {
+      applyTree(tree);
+      return null;
+    }
+    return idbGet(IDB_LEGACY_SNAPSHOT_KEY);
+  }).then(function (legacySnapshot) {
+    if (PROJECTS.items.length) return null;
+    var defaultProject = { id: PROJECTS.nextId++, type: 'project', name: 'Проект 1', parentId: null };
+    PROJECTS.items.push(defaultProject);
+    var migrating = legacySnapshot
+      ? idbSet(projectContentKey(defaultProject.id), legacySnapshot).then(function () { return idbDelete(IDB_LEGACY_SNAPSHOT_KEY); })
+      : Promise.resolve();
+    return migrating.then(function () { return idbSet(IDB_TREE_KEY, serializeTree()); });
   }).catch(function (err) {
-    console.warn('Не вдалося прочитати локальне сховище (IndexedDB):', err);
+    console.warn('Не вдалося прочитати/мігрувати дерево проектів (IndexedDB):', err);
+  }).then(function () {
+    var savedId = parseInt(localStorage.getItem(CURRENT_PROJECT_ID_KEY), 10);
+    var savedItem = !isNaN(savedId) ? findProjectItem(savedId) : null;
+    var target = (savedItem && savedItem.type === 'project')
+      ? savedId
+      : (PROJECTS.items.filter(function (i) { return i.type === 'project'; })[0] || {}).id;
+    if (!target) {
+      var created = { id: PROJECTS.nextId++, type: 'project', name: 'Проект 1', parentId: null };
+      PROJECTS.items.push(created);
+      target = created.id;
+    }
+    return idbGet(projectContentKey(target)).then(function (snapshot) {
+      if (snapshot) applySnapshot(snapshot);
+      currentProjectId = target;
+      localStorage.setItem(CURRENT_PROJECT_ID_KEY, String(target));
+    });
+  }).catch(function (err) {
+    console.warn('Не вдалося прочитати вміст проекту (IndexedDB):', err);
   }).then(function () {
     renderAll();
     withCloudSync(function (api) {
-      api.connect(CLOUD_DOC_ID, handleRemoteSnapshot);
+      api.watch('meta', 'tree', handleRemoteTree);
     });
+    watchProjectContent(currentProjectId);
   });
 })();
 
@@ -3424,8 +3838,9 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
   всередині основного скрипта вище. Модульні скрипти виконуються асинхронно
   (як defer) і мають власну ізольовану область видимості — щоб не міняти тип
   основного (класичного, синхронного) скрипта застосунку та не ризикувати
-  його поведінкою, Firebase-логіка винесена сюди й публікує невеликий API
-  через window.cloudSync + подію 'cloudsyncready', яку основний скрипт чекає
+  його поведінкою, Firebase-логіка винесена сюди й публікує невеликий
+  узагальнений API (watch/push по довільній колекції+документу) через
+  window.cloudSync + подію 'cloudsyncready', яку основний скрипт чекає
   (див. withCloudSync() у ньому).
 -->
 <script type="module">
@@ -3445,40 +3860,25 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 
   var app = initializeApp(firebaseConfig);
   var db = getFirestore(app);
-  var unsubscribe = null;
-
-  function sanitizeCode(code) {
-    return String(code == null ? '' : code).trim();
-  }
 
   window.cloudSync = {
-    // Підписується на зміни документа boards/{код доступу}. onRemoteChange
+    // Підписується на зміни документа {collectionName}/{docId} — onChange
     // викликається з даними документа щоразу, коли він змінюється (включно
-    // з першим отриманням при підключенні). onStatus повідомляє про стан
-    // з'єднання ('connecting' | 'online' | 'error').
-    connect: function (accessCode, onRemoteChange, onStatus) {
-      if (unsubscribe) { unsubscribe(); unsubscribe = null; }
-      var code = sanitizeCode(accessCode);
-      if (!code) return;
-      var ref = doc(db, 'boards', code);
-      if (onStatus) onStatus('connecting');
-      unsubscribe = onSnapshot(ref, function (snap) {
-        if (onStatus) onStatus('online');
-        if (snap.exists()) onRemoteChange(snap.data());
+    // з першим отриманням одразу після підписки). Повертає функцію
+    // відписки — виклик watch() для різних docId незалежний (кожен виклик
+    // має власну підписку; основний скрипт сам зберігає й за потреби
+    // викликає повернуту функцію відписки, напр. при перемиканні проекту).
+    watch: function (collectionName, docId, onChange) {
+      var ref = doc(db, collectionName, String(docId));
+      return onSnapshot(ref, function (snap) {
+        if (snap.exists()) onChange(snap.data());
       }, function (err) {
-        console.warn('Firestore onSnapshot помилка:', err);
-        if (onStatus) onStatus('error');
+        console.warn('Firestore onSnapshot помилка (' + collectionName + '/' + docId + '):', err);
       });
     },
-    disconnect: function () {
-      if (unsubscribe) { unsubscribe(); unsubscribe = null; }
-    },
-    // Повністю перезаписує документ boards/{код доступу} переданим знімком
-    // стану (весь STORAGE + теги + лічильники).
-    push: function (accessCode, data) {
-      var code = sanitizeCode(accessCode);
-      if (!code) return Promise.reject(new Error('Немає коду доступу'));
-      var ref = doc(db, 'boards', code);
+    // Повністю перезаписує документ {collectionName}/{docId} переданими даними.
+    push: function (collectionName, docId, data) {
+      var ref = doc(db, collectionName, String(docId));
       return setDoc(ref, data);
     }
   };
