@@ -29,18 +29,28 @@
     --danger: #E0876B;
     --edge-selected: #F4C363;
 
-    /* Три кольори, які можна змінювати у вікні «Налаштування» (розділ
-       «Кольори»). Навмисно ВІДОКРЕМЛЕНІ від --blueprint-bg/--blueprint-bg-deep/
-       --accent (ті самі змінні використовуються і для елементів інтерфейсу —
-       панелей, полів вводу, виділення тощо), щоб зміна кольору прямокутника/
-       канви/лінії користувачем не чіпала решту вигляду застосунку. За
-       замовчуванням значення збігаються з відповідними --blueprint-*/--accent. */
-    --user-box-fill: var(--blueprint-bg-deep);
-    --user-canvas-bg: var(--blueprint-bg);
-    --user-line-color: var(--accent);
-    --user-box-border: var(--box-stroke);
+    /* Кольори, які можна змінювати у вікні «Налаштування» (розділ
+       «Кольори»): тло/бордер прямокутника, тло канви, колір лінії, тло/
+       бордер рамки. Навмисно ЛІТЕРАЛЬНІ (не var(--blueprint-bg-deep) тощо) —
+       якщо задати їх через посилання на іншу змінну, JS у вікні налаштувань
+       (getComputedStyle(...).getPropertyValue('--user-...')) читає СИРЕ,
+       нерозв'язане значення на кшталт рядка "var(--blueprint-bg-deep)"
+       (браузер не підставляє вкладені var() у сам текст кастомної
+       властивості — лише коли її підставляють у звичайну CSS-властивість
+       на кшталт fill/background). Через це поле кольору в налаштуваннях не
+       могло показати правильний поточний колір прямокутника (недійсне
+       значення для <input type="color"> браузер мовчки ігнорує), і
+       здавалося, що прямокутник «переймає» колір канви замість власного.
+       Літеральні значення нижче збігаються з попередніми (--blueprint-bg-deep/
+       --blueprint-bg/--accent/--box-stroke/--accent-dim), тож вигляд
+       застосунку не змінюється — виправлено лише читання поточного
+       значення в самому вікні налаштувань. */
+    --user-box-fill: #102640;
+    --user-canvas-bg: #16324F;
+    --user-line-color: #6FD6C9;
+    --user-box-border: #CFE8FF;
     --user-frame-fill: rgba(244, 195, 99, 0.06);
-    --user-frame-border: var(--accent-dim);
+    --user-frame-border: rgba(111, 214, 201, 0.35);
   }
 
   * { box-sizing: border-box; }
@@ -1011,7 +1021,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.20.1</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.20.2</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
