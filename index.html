@@ -28,6 +28,16 @@
     --paper-card: #0F2A45;
     --danger: #E0876B;
     --edge-selected: #F4C363;
+
+    /* Три кольори, які можна змінювати у вікні «Налаштування» (розділ
+       «Кольори»). Навмисно ВІДОКРЕМЛЕНІ від --blueprint-bg/--blueprint-bg-deep/
+       --accent (ті самі змінні використовуються і для елементів інтерфейсу —
+       панелей, полів вводу, виділення тощо), щоб зміна кольору прямокутника/
+       канви/лінії користувачем не чіпала решту вигляду застосунку. За
+       замовчуванням значення збігаються з відповідними --blueprint-*/--accent. */
+    --user-box-fill: var(--blueprint-bg-deep);
+    --user-canvas-bg: var(--blueprint-bg);
+    --user-line-color: var(--accent);
   }
 
   * { box-sizing: border-box; }
@@ -36,7 +46,7 @@
     margin: 0;
     padding: 0;
     height: 100%;
-    background: var(--blueprint-bg);
+    background: var(--user-canvas-bg);
     color: var(--ink);
     font-family: 'Inter', sans-serif;
     overflow: hidden;
@@ -431,7 +441,7 @@
   }
 
   .word-box {
-    fill: var(--blueprint-bg-deep);
+    fill: var(--user-box-fill);
     stroke: var(--box-stroke);
     stroke-width: 1.3;
     cursor: pointer;
@@ -522,7 +532,7 @@
   }
 
   .link-line {
-    stroke: var(--accent);
+    stroke: var(--user-line-color);
     fill: none;
     pointer-events: none;
   }
@@ -737,6 +747,85 @@
   }
   #insertTagModeBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  .settings-section {
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .settings-section:last-child { margin-bottom: 0; }
+  .settings-section-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+  }
+  .settings-textarea {
+    width: 100%;
+    min-height: 90px;
+    resize: vertical;
+    background: var(--blueprint-bg-deep);
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 3px;
+    color: var(--ink);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    padding: 8px;
+    outline: none;
+  }
+  .settings-textarea:focus { border-color: var(--accent); }
+  .settings-actions-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .settings-actions-row button {
+    flex: 1 1 auto;
+    background: transparent;
+    color: var(--ink-dim);
+    border: 1px solid var(--grid-line-strong);
+    font-size: 12.5px;
+    padding: 8px 6px;
+  }
+  .settings-actions-row button:hover { color: var(--ink); border-color: var(--ink-dim); }
+  .settings-actions-row button.settings-primary-btn {
+    background: var(--accent);
+    color: #0B2036;
+    font-weight: 600;
+    border-color: var(--accent);
+  }
+  .settings-actions-row button.settings-primary-btn:hover { opacity: 0.88; }
+  .settings-hint {
+    font-size: 11.5px;
+    color: var(--ink-dim);
+    margin-top: 8px;
+    line-height: 1.4;
+  }
+  .settings-hint.settings-hint-error { color: var(--danger); }
+  .settings-color-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 0;
+  }
+  .settings-color-row label {
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .settings-color-row input[type="color"] {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+  }
+
   .tags-list, .tag-nodes-list {
     overflow-y: auto;
     max-height: 46vh;
@@ -914,7 +1003,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.19.1</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.20.0</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -940,6 +1029,7 @@
             </div>
           </div>
           <div class="row-actions">
+            <button class="row-delete-top" id="settingsBtn" title="Налаштування">⚙</button>
             <button class="row-delete-top" id="saveBtn" title="Зберегти в хмару">💾</button>
             <button class="row-delete-top" id="tagsBtn" title="Теги">🏷</button>
             <button class="row-delete-top" id="editSentenceBtn" title="Редагувати текст">✏</button>
@@ -1032,6 +1122,44 @@
       </div>
 
       <div id="projectsList" class="tags-list"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal-box tags-modal-box">
+      <div class="tags-modal-header">
+        <h3>Налаштування</h3>
+        <button class="modal-close-btn" id="settingsCloseBtn" title="Закрити">✕</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Firebase (Firestore)</div>
+        <textarea id="firebaseConfigInput" class="settings-textarea" rows="6" placeholder='{"apiKey": "…", "authDomain": "…", "projectId": "…", "storageBucket": "…", "messagingSenderId": "…", "appId": "…"}'></textarea>
+        <div class="settings-actions-row">
+          <button id="firebaseConfigResetBtn">Типовий</button>
+          <button id="firebaseConfigApplyBtn" class="settings-primary-btn">Застосувати</button>
+        </div>
+        <div class="settings-hint" id="firebaseConfigStatus">Застосування перезавантажить сторінку, щоб підключити нову конфігурацію.</div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Кольори</div>
+        <div class="settings-color-row">
+          <label for="settingBoxColor">Тло прямокутника</label>
+          <input type="color" id="settingBoxColor">
+        </div>
+        <div class="settings-color-row">
+          <label for="settingCanvasColor">Тло канви</label>
+          <input type="color" id="settingCanvasColor">
+        </div>
+        <div class="settings-color-row">
+          <label for="settingLineColor">Колір лінії</label>
+          <input type="color" id="settingLineColor">
+        </div>
+        <div class="settings-actions-row">
+          <button id="settingsColorsResetBtn">Типові кольори</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1380,6 +1508,18 @@
   var projectsCurrentFolderTitle = document.getElementById('projectsCurrentFolderTitle');
   var projectsList = document.getElementById('projectsList');
   var syncStatusText = document.getElementById('syncStatusText');
+
+  var settingsBtn = document.getElementById('settingsBtn');
+  var settingsModal = document.getElementById('settingsModal');
+  var settingsCloseBtn = document.getElementById('settingsCloseBtn');
+  var firebaseConfigInput = document.getElementById('firebaseConfigInput');
+  var firebaseConfigApplyBtn = document.getElementById('firebaseConfigApplyBtn');
+  var firebaseConfigResetBtn = document.getElementById('firebaseConfigResetBtn');
+  var firebaseConfigStatus = document.getElementById('firebaseConfigStatus');
+  var settingBoxColor = document.getElementById('settingBoxColor');
+  var settingCanvasColor = document.getElementById('settingCanvasColor');
+  var settingLineColor = document.getElementById('settingLineColor');
+  var settingsColorsResetBtn = document.getElementById('settingsColorsResetBtn');
 
   // Чи активний режим «Вставити тег» у вікні тегів: якщо так, наступний клік
   // по назві тега в списку призначає цей тег вибраному прямокутнику
@@ -3338,7 +3478,7 @@
       parentId = parent.parentId || null;
       guard++;
     }
-    appPathEl.textContent = '/' + parts.join(' / ');
+    appPathEl.textContent = '/' + parts.join('/');
   }
 
   function getProjectChildren(parentId) {
@@ -3715,6 +3855,126 @@
 
   projectsBtn.addEventListener('click', openProjectsModal);
   projectsCloseBtn.addEventListener('click', closeProjectsModal);
+
+  // ===== Налаштування (кольори + Firebase config) =====
+  //
+  // Кольори: три CSS-змінні (--user-box-fill/--user-canvas-bg/--user-line-color,
+  // див. :root) керують виглядом прямокутників/канви/ліній окремо від решти
+  // інтерфейсу. Значення застосовуються одразу (document.documentElement.
+  // style.setProperty) і зберігаються в localStorage, щоб лишались після
+  // перезавантаження; кожне окреме — свій ключ, «Типові кольори» видаляє всі
+  // три й повертає обчислені типові значення назад у самі color-інпути.
+  var SETTINGS_COLOR_KEYS = {
+    box: { cssVar: '--user-box-fill', storageKey: 'sd_color_box_fill', input: settingBoxColor },
+    canvas: { cssVar: '--user-canvas-bg', storageKey: 'sd_color_canvas_bg', input: settingCanvasColor },
+    line: { cssVar: '--user-line-color', storageKey: 'sd_color_line', input: settingLineColor }
+  };
+
+  // Приводить колір до формату #rrggbb, який єдиний коректно розуміє
+  // <input type="color"> — getComputedStyle() для кольору, заданого як HEX,
+  // повертає rgb(r, g, b), тому конвертуємо назад.
+  function colorToHex(value) {
+    var m = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(value);
+    if (!m) return value;
+    function h(n) { return ('0' + parseInt(n, 10).toString(16)).slice(-2); }
+    return '#' + h(m[1]) + h(m[2]) + h(m[3]);
+  }
+
+  function applySavedColorSettings() {
+    Object.keys(SETTINGS_COLOR_KEYS).forEach(function (key) {
+      var cfg = SETTINGS_COLOR_KEYS[key];
+      var saved = localStorage.getItem(cfg.storageKey);
+      if (saved) document.documentElement.style.setProperty(cfg.cssVar, saved);
+    });
+  }
+
+  function populateColorInputs() {
+    Object.keys(SETTINGS_COLOR_KEYS).forEach(function (key) {
+      var cfg = SETTINGS_COLOR_KEYS[key];
+      var current = getComputedStyle(document.documentElement).getPropertyValue(cfg.cssVar).trim();
+      cfg.input.value = colorToHex(current);
+    });
+  }
+
+  Object.keys(SETTINGS_COLOR_KEYS).forEach(function (key) {
+    var cfg = SETTINGS_COLOR_KEYS[key];
+    cfg.input.addEventListener('input', function () {
+      document.documentElement.style.setProperty(cfg.cssVar, cfg.input.value);
+      localStorage.setItem(cfg.storageKey, cfg.input.value);
+    });
+  });
+
+  settingsColorsResetBtn.addEventListener('click', function () {
+    Object.keys(SETTINGS_COLOR_KEYS).forEach(function (key) {
+      var cfg = SETTINGS_COLOR_KEYS[key];
+      document.documentElement.style.removeProperty(cfg.cssVar);
+      localStorage.removeItem(cfg.storageKey);
+    });
+    populateColorInputs();
+  });
+
+  // Застосовує збережені кольори одразу при завантаженні застосунку (а не
+  // лише коли відкрито вікно налаштувань).
+  applySavedColorSettings();
+
+  // Firebase config: зберігається окремим ключем localStorage і читається
+  // модульним скриптом підключення Firebase (у самому кінці файлу) ще ДО
+  // initializeApp() — оскільки Firebase-з'єднання встановлюється один раз
+  // при завантаженні сторінки, змінити його «на льоту» без перезавантаження
+  // неможливо, тому застосування конфігурації одразу перезавантажує сторінку.
+  var FIREBASE_CONFIG_STORAGE_KEY = 'sd_firebaseConfigOverride';
+
+  function setFirebaseStatus(text, isError) {
+    firebaseConfigStatus.textContent = text;
+    firebaseConfigStatus.classList.toggle('settings-hint-error', !!isError);
+  }
+
+  function openSettingsModal() {
+    var saved = localStorage.getItem(FIREBASE_CONFIG_STORAGE_KEY);
+    firebaseConfigInput.value = saved ? JSON.stringify(JSON.parse(saved), null, 2) : '';
+    setFirebaseStatus(saved
+      ? 'Застосовано власну конфігурацію. Застосування перезавантажить сторінку.'
+      : 'Використовується типова конфігурація. Застосування перезавантажить сторінку.');
+    populateColorInputs();
+    settingsModal.classList.remove('hidden');
+  }
+  function closeSettingsModal() {
+    settingsModal.classList.add('hidden');
+  }
+
+  firebaseConfigApplyBtn.addEventListener('click', function () {
+    var raw = firebaseConfigInput.value.trim();
+    if (!raw) {
+      localStorage.removeItem(FIREBASE_CONFIG_STORAGE_KEY);
+      setFirebaseStatus('Поле порожнє — застосовується типова конфігурація. Перезавантаження…');
+      setTimeout(function () { location.reload(); }, 600);
+      return;
+    }
+    var parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      setFirebaseStatus('Помилка: це не коректний JSON. Перевірте лапки/коми й спробуйте ще раз.', true);
+      return;
+    }
+    if (!parsed || typeof parsed !== 'object' || !parsed.apiKey || !parsed.projectId) {
+      setFirebaseStatus('Помилка: у конфігурації мають бути принаймні поля "apiKey" і "projectId".', true);
+      return;
+    }
+    localStorage.setItem(FIREBASE_CONFIG_STORAGE_KEY, JSON.stringify(parsed));
+    setFirebaseStatus('Застосовано. Перезавантаження…');
+    setTimeout(function () { location.reload(); }, 600);
+  });
+
+  firebaseConfigResetBtn.addEventListener('click', function () {
+    localStorage.removeItem(FIREBASE_CONFIG_STORAGE_KEY);
+    firebaseConfigInput.value = '';
+    setFirebaseStatus('Скинуто до типової конфігурації. Перезавантаження…');
+    setTimeout(function () { location.reload(); }, 600);
+  });
+
+  settingsBtn.addEventListener('click', openSettingsModal);
+  settingsCloseBtn.addEventListener('click', closeSettingsModal);
 
   // Перемикає активний проект: підміняє вміст STORAGE/TAGS/лічильників на
   // вміст проекту з id, перерендерює канву й перепідписується на зміни саме
@@ -4192,6 +4452,11 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     getFirestore, doc, setDoc, onSnapshot
   } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
+  // Типова конфігурація Firebase. Якщо в localStorage збережено власну
+  // (введену у вікні «Налаштування» → «Firebase (Firestore)»), вона має
+  // пріоритет — саме так інші проєкти/бекенди Firebase можна підключити без
+  // редагування коду. Будь-яка помилка парсингу — тихий відкат до типової,
+  // щоб пошкоджений/старий запис у localStorage ніколи не зламав завантаження.
   var firebaseConfig = {
     apiKey: "AIzaSyDRd0eXg5Y74MY7cUF9xAdAZLBQyJxIEqQ",
     authDomain: "tgk-maps-app.firebaseapp.com",
@@ -4200,6 +4465,17 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
     messagingSenderId: "330086974521",
     appId: "1:330086974521:web:eb3ab884bfd87fb13b79e8"
   };
+  try {
+    var savedFirebaseConfig = localStorage.getItem('sd_firebaseConfigOverride');
+    if (savedFirebaseConfig) {
+      var parsedFirebaseConfig = JSON.parse(savedFirebaseConfig);
+      if (parsedFirebaseConfig && parsedFirebaseConfig.apiKey && parsedFirebaseConfig.projectId) {
+        firebaseConfig = parsedFirebaseConfig;
+      }
+    }
+  } catch (err) {
+    console.warn('Не вдалося застосувати власну конфігурацію Firebase, використано типову:', err);
+  }
 
   var app = initializeApp(firebaseConfig);
   var db = getFirestore(app);
