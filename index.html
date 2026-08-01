@@ -887,7 +887,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.18.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.18.1</span></h1>
         <div class="app-path" id="appPath"></div>
       </header>
 
@@ -1098,15 +1098,69 @@
     });
   }
 
+  // Перетворює вкладене дерево sentence.root (кожен вузол — node.children:
+  // [{ node, lineType, frameGroupId? }, ...], і так рекурсивно) у пласку
+  // структуру { rootId, nodes: [...], edges: [...] }, яка НЕ залежить від
+  // глибини ланцюжка. Причина: Firestore відмовляється зберігати документ,
+  // де карти/масиви вкладені глибше 20 рівнів — довгий ланцюжок
+  // прямокутників праворуч (кожен наступний прямокутник — на один рівень
+  // глибший за попередній) після ~20 прямокутників перевищував цю межу;
+  // setDoc() у хмару падав з помилкою, яка тихо ловилась у .catch(), і в
+  // хмарі лишалась стара, коротша версія речення — звідси й «урізання»
+  // ланцюжка після синхронізації. У пласкій структурі глибина ланцюжка
+  // ніяк не впливає на глибину вкладеності JSON, тож обмеження Firestore
+  // більше не застосовується незалежно від довжини ланцюжка.
+  function flattenTree(root) {
+    var nodes = [];
+    var edges = [];
+    function walk(node) {
+      nodes.push({ id: node.id, text: node.text, notes: node.notes || [], tags: node.tags || [] });
+      node.children.forEach(function (edge) {
+        var e = { parentId: node.id, childId: edge.node.id, lineType: edge.lineType };
+        if (edge.frameGroupId !== undefined) e.frameGroupId = edge.frameGroupId;
+        edges.push(e);
+        walk(edge.node);
+      });
+    }
+    walk(root);
+    return { rootId: root.id, nodes: nodes, edges: edges };
+  }
+
+  // Зворотне перетворення пласкої структури (див. flattenTree) назад у
+  // вкладене дерево, з яким працює решта застосунку (рендер, перетягування
+  // тощо). Розпізнається за наявністю поля nodes (масив) — застаріла
+  // (вкладена) структура, збережена попередніми версіями застосунку, не
+  // має цього поля і застосовується без змін (див. applySnapshot).
+  function unflattenTree(flat) {
+    var byId = {};
+    flat.nodes.forEach(function (n) {
+      byId[n.id] = { id: n.id, text: n.text, notes: n.notes || [], tags: n.tags || [], children: [] };
+    });
+    flat.edges.forEach(function (e) {
+      var parent = byId[e.parentId];
+      var child = byId[e.childId];
+      if (!parent || !child) return;
+      var edgeObj = { node: child, lineType: e.lineType };
+      if (e.frameGroupId !== undefined) edgeObj.frameGroupId = e.frameGroupId;
+      parent.children.push(edgeObj);
+    });
+    return byId[flat.rootId];
+  }
+
   // Знімок вмісту ПОТОЧНОГО проекту — усі графічні речення, теги й
   // лічильники id. JSON-round-trip (parse(stringify(...))) заодно прибирає
   // undefined-значення (напр. edge.frameGroupId, коли рамки немає) —
   // Firestore не приймає поля зі значенням undefined.
   function serializeSnapshot() {
     var raw = {
-      v: 1,
+      v: 2,
       updatedAt: Date.now(),
-      storage: STORAGE,
+      storage: {
+        sentences: STORAGE.sentences.map(function (sentence) {
+          return { root: flattenTree(sentence.root), groups: sentence.groups || [] };
+        }),
+        nextNodeId: STORAGE.nextNodeId
+      },
       tags: TAGS,
       nextTagId: nextTagId,
       nextGroupId: nextGroupId
@@ -1116,7 +1170,17 @@
 
   function applySnapshot(snap) {
     if (!snap || !snap.storage) return;
-    STORAGE.sentences = snap.storage.sentences || [];
+    var sentences = snap.storage.sentences || [];
+    STORAGE.sentences = sentences.map(function (sentence) {
+      // Пласка структура (v2+) розпізнається за sentence.root.nodes (масив).
+      // Стара вкладена структура (v1, збережена раніше цієї версії) не має
+      // цього поля — застосовується як є, без перетворення, для сумісності
+      // з уже збереженими даними.
+      var root = (sentence.root && Array.isArray(sentence.root.nodes))
+        ? unflattenTree(sentence.root)
+        : sentence.root;
+      return { root: root, groups: sentence.groups || [] };
+    });
     STORAGE.nextNodeId = snap.storage.nextNodeId || 1;
     TAGS = snap.tags || [];
     nextTagId = snap.nextTagId || 1;
