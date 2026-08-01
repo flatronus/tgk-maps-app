@@ -346,41 +346,12 @@
     gap: 6px;
   }
 
-  .sync-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: transparent;
-    border: 1px solid var(--grid-line-strong);
-    color: var(--ink-dim);
-    padding: 4px 10px;
-    font-size: 11px;
-    text-transform: none;
-    letter-spacing: normal;
-    border-radius: 3px;
+  .sync-status-text {
+    font-size: 11.5px;
+    font-weight: 600;
   }
-  .sync-btn:hover { color: var(--ink); border-color: var(--ink-dim); }
-
-  .sync-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--ink-dim);
-    flex: 0 0 auto;
-  }
-  .sync-dot.idle { background: var(--ink-dim); }
-  .sync-dot.connecting, .sync-dot.syncing { background: var(--edge-selected); }
-  .sync-dot.online { background: var(--accent); }
-  .sync-dot.error { background: var(--danger); }
-
-  .sync-status-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12.5px;
-    color: var(--ink-dim);
-    margin-bottom: 12px;
-  }
+  .sync-status-text.synced { color: var(--accent); }
+  .sync-status-text.unsynced { color: var(--danger); }
 
   .zoom-btn {
     width: 24px;
@@ -871,7 +842,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.16.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.16.1</span></h1>
       </header>
 
       <div class="panel">
@@ -894,6 +865,7 @@
             </button>
           </div>
           <div class="row-actions">
+            <button class="row-delete-top" id="saveBtn" title="Зберегти в хмару">💾</button>
             <button class="row-delete-top" id="tagsBtn" title="Теги">🏷</button>
             <button class="row-delete-top" id="editSentenceBtn" title="Редагувати текст">✏</button>
             <button class="row-delete-top" id="deleteSentenceBtn" title="Видалити графічне речення">🗑</button>
@@ -915,10 +887,7 @@
   <div class="statusbar">
     <div class="wrap">
       <span id="countLabel">Речень додано: 0</span>
-      <button class="sync-btn" id="syncBtn" title="Синхронізація між пристроями">
-        <span class="sync-dot" id="syncDot"></span>
-        <span id="syncBtnLabel">Синхронізація</span>
-      </button>
+      <span class="sync-status-text" id="syncStatusText">не синхронізовано</span>
       <div class="zoom-controls">
         <button class="zoom-btn" id="zoomOutBtn" title="Зменшити">−</button>
         <span id="zoomLabel">100%</span>
@@ -965,36 +934,6 @@
     </div>
   </div>
 
-  <div class="modal-overlay hidden" id="syncModal">
-    <div class="modal-box tags-modal-box">
-      <div class="tags-modal-header">
-        <h3>Синхронізація</h3>
-        <button class="modal-close-btn" id="syncCloseBtn" title="Закрити">✕</button>
-      </div>
-
-      <p style="margin: 0 0 12px; font-size: 12.5px; line-height: 1.5; color: var(--ink-dim);">
-        Введіть однаковий код доступу на всіх пристроях (планшет, комп'ютер),
-        щоб графічні речення автоматично синхронізувались між ними через
-        хмару. Код — це як пароль: нікому його не повідомляйте.
-      </p>
-
-      <div class="sync-status-row">
-        <span class="sync-dot" id="syncModalDot"></span>
-        <span id="syncStatusText">Синхронізацію не налаштовано</span>
-      </div>
-
-      <div class="tags-new-row">
-        <input type="text" id="syncCodeInput" placeholder="Код доступу…" autocomplete="off">
-      </div>
-      <div class="tags-actions-row" style="display: flex; gap: 8px;">
-        <button id="syncSaveBtn" style="flex: 1;">Зберегти й підключити</button>
-      </div>
-      <div class="tags-actions-row">
-        <button id="syncDisconnectBtn">Відключити синхронізацію на цьому пристрої</button>
-      </div>
-    </div>
-  </div>
-
   <div id="dragInsertIndicator" class="drag-insert-indicator hidden"></div>
 
 <script>
@@ -1010,24 +949,23 @@
   var TAGS = [];
   var nextTagId = 1;
 
-  // ===== Збереження: локально (IndexedDB) + синхронізація між пристроями (Firestore) =====
+  // ===== Збереження: локально (IndexedDB, автоматично) + вручну в хмару (Firestore) =====
   //
   // IndexedDB працює завжди й одразу, без інтернету — це «страховка» від
-  // втрати роботи при оновленні сторінки чи закритті вкладки. Firestore —
-  // опційний (лише якщо на пристрої введено код доступу в вікні
-  // «Синхронізація») механізм фонового перенесення того самого знімка стану
-  // між пристроями. Прапорець applyingRemoteUpdate потрібен, щоб застосування
-  // щойно отриманих ззовні даних не викликало зайве відправлення їх назад
-  // у хмару (нескінченне відлуння).
-  var SYNC_CODE_KEY = 'krLenikSyncAccessCode';
+  // втрати роботи при оновленні сторінки чи закритті вкладки: кожна значуща
+  // зміна одразу зберігається локально й ставить статус «не синхронізовано».
+  // У хмару (єдиний спільний документ Firestore) дані йдуть лише вручну —
+  // по натисканню кнопки «Зберегти» — після чого статус стає «синхронізовано».
+  // Прапорець applyingRemoteUpdate потрібен, щоб застосування щойно
+  // отриманих із хмари даних (при відкритті застосунку на іншому пристрої)
+  // не позначало стан як «не синхронізовано» — він же й так уже такий, як у хмарі.
+  var CLOUD_DOC_ID = 'main';
   var IDB_NAME = 'kreslenik-store';
   var IDB_STORE = 'kv';
   var IDB_SNAPSHOT_KEY = 'snapshot';
   var idbOpenPromise = null;
   var applyingRemoteUpdate = false;
-  var saveDebounceTimer = null;
-  var lastKnownUpdatedAt = 0;
-  var cloudSyncApi = null;
+  var isSynced = false;
 
   function openIdb() {
     if (idbOpenPromise) return idbOpenPromise;
@@ -1088,50 +1026,46 @@
 
   // Викликається наприкінці кожного renderAll() — тобто після будь-якої
   // значущої зміни стану (додавання/видалення/редагування/переставляння
-  // тощо). Зберігає миттєво локально (IndexedDB) і, з невеликою затримкою
-  // (щоб не «стріляти» в хмару на кожну дрібну зміну поспіль), відправляє в
-  // Firestore, якщо синхронізацію налаштовано.
+  // тощо). Зберігає миттєво локально (IndexedDB) і позначає стан як
+  // «не синхронізовано» (доки користувач сам не натисне «Зберегти»).
   function scheduleSave() {
-    if (applyingRemoteUpdate) return; // це власне відлуння щойно застосованих зовнішніх даних
     var snapshot = serializeSnapshot();
-    lastKnownUpdatedAt = snapshot.updatedAt;
     idbSet(IDB_SNAPSHOT_KEY, snapshot).catch(function (err) {
       console.warn('Не вдалося зберегти локально (IndexedDB):', err);
     });
-    clearTimeout(saveDebounceTimer);
-    saveDebounceTimer = setTimeout(function () {
-      pushToCloud(snapshot);
-    }, 800);
+    if (!applyingRemoteUpdate) setSyncStatus(false);
   }
 
-  function pushToCloud(snapshot) {
-    var code = localStorage.getItem(SYNC_CODE_KEY);
-    if (!code) return;
+  // Натискання кнопки «Зберегти» — єдиний момент, коли дані йдуть у хмару.
+  function saveToCloud() {
+    var snapshot = serializeSnapshot();
     withCloudSync(function (api) {
-      setSyncStatus('syncing');
-      api.push(code, snapshot).then(function () {
-        setSyncStatus('online');
+      api.push(CLOUD_DOC_ID, snapshot).then(function () {
+        setSyncStatus(true);
       }).catch(function (err) {
-        setSyncStatus('error');
         console.warn('Не вдалося синхронізувати з хмарою:', err);
       });
     });
   }
 
-  // Дані, щойно отримані з іншого пристрою через Firestore. Застосовуємо
-  // лише якщо вони справді новіші за те, що вже є тут (updatedAt) — інакше,
-  // наприклад, застарілий знімок міг би перезаписати свіжі локальні зміни,
-  // зроблені офлайн.
+  // Дані, отримані з хмари (напр. при відкритті застосунку на іншому
+  // пристрої, куди раніше зберегли з іншого). Якщо вони новіші за те, що є
+  // тут, — застосовуємо; після застосування дані тут точно збігаються з
+  // хмарою, тож статус одразу «синхронізовано».
   function handleRemoteSnapshot(remote) {
     if (!remote || typeof remote.updatedAt !== 'number') return;
-    if (remote.updatedAt <= lastKnownUpdatedAt) return;
-    lastKnownUpdatedAt = remote.updatedAt;
     applyingRemoteUpdate = true;
     applySnapshot(remote);
     renderAll();
     applyingRemoteUpdate = false;
     idbSet(IDB_SNAPSHOT_KEY, remote).catch(function () {});
-    setSyncStatus('online');
+    setSyncStatus(true);
+  }
+
+  function setSyncStatus(synced) {
+    isSynced = synced;
+    syncStatusText.textContent = synced ? 'синхронізовано' : 'не синхронізовано';
+    syncStatusText.className = 'sync-status-text ' + (synced ? 'synced' : 'unsynced');
   }
 
   // Модуль Firebase (окремий <script type="module">, підключається нижче в
@@ -1195,16 +1129,8 @@
   var tagNodesList = document.getElementById('tagNodesList');
   var tagsBackBtn = document.getElementById('tagsBackBtn');
 
-  var syncBtn = document.getElementById('syncBtn');
-  var syncDot = document.getElementById('syncDot');
-  var syncBtnLabel = document.getElementById('syncBtnLabel');
-  var syncModal = document.getElementById('syncModal');
-  var syncCloseBtn = document.getElementById('syncCloseBtn');
-  var syncModalDot = document.getElementById('syncModalDot');
+  var saveBtn = document.getElementById('saveBtn');
   var syncStatusText = document.getElementById('syncStatusText');
-  var syncCodeInput = document.getElementById('syncCodeInput');
-  var syncSaveBtn = document.getElementById('syncSaveBtn');
-  var syncDisconnectBtn = document.getElementById('syncDisconnectBtn');
 
   // Чи активний режим «Вставити тег» у вікні тегів: якщо так, наступний клік
   // по назві тега в списку призначає цей тег вибраному прямокутнику
@@ -3138,57 +3064,7 @@
     insertTagModeBtn.classList.toggle('active', tagInsertMode);
   });
 
-  // ===== Вікно синхронізації =====
-
-  // status: 'idle' (код не введено) | 'connecting' | 'syncing' | 'online' | 'error'
-  function setSyncStatus(status) {
-    var labels = {
-      idle: 'Синхронізацію не налаштовано',
-      connecting: 'Підключення…',
-      syncing: 'Синхронізується…',
-      online: 'Синхронізовано',
-      error: 'Помилка синхронізації'
-    };
-    var text = labels[status] || labels.idle;
-    syncDot.className = 'sync-dot ' + status;
-    syncModalDot.className = 'sync-dot ' + status;
-    syncStatusText.textContent = text;
-    syncBtnLabel.textContent = status === 'idle' ? 'Синхронізація' : text;
-  }
-
-  function connectCloudSync(code) {
-    withCloudSync(function (api) {
-      setSyncStatus('connecting');
-      api.connect(code, handleRemoteSnapshot, setSyncStatus);
-    });
-  }
-
-  function openSyncModal() {
-    syncCodeInput.value = localStorage.getItem(SYNC_CODE_KEY) || '';
-    syncModal.classList.remove('hidden');
-  }
-  function closeSyncModal() {
-    syncModal.classList.add('hidden');
-  }
-
-  syncBtn.addEventListener('click', openSyncModal);
-  syncCloseBtn.addEventListener('click', closeSyncModal);
-
-  syncSaveBtn.addEventListener('click', function () {
-    var code = syncCodeInput.value.trim();
-    if (!code) return;
-    localStorage.setItem(SYNC_CODE_KEY, code);
-    connectCloudSync(code);
-    closeSyncModal();
-  });
-
-  syncDisconnectBtn.addEventListener('click', function () {
-    localStorage.removeItem(SYNC_CODE_KEY);
-    withCloudSync(function (api) { api.disconnect(); });
-    setSyncStatus('idle');
-    syncCodeInput.value = '';
-    closeSyncModal();
-  });
+  saveBtn.addEventListener('click', saveToCloud);
 
   function setCurrentLineType(lineType) {
     currentLineType = lineType;
@@ -3517,20 +3393,17 @@
 
   // Перед першим рендером пробуємо відновити збережений локально знімок
   // стану (IndexedDB) — так закриття вкладки чи оновлення сторінки більше
-  // не стирає роботу. Якщо на цьому пристрої вже введено код доступу —
-  // одразу підключаємось до фонової синхронізації з хмарою.
+  // не стирає роботу. Далі одразу підключаємось до хмари, щоб автоматично
+  // підхопити зміни, які могли зберегти («Зберегти») з іншого пристрою.
   idbGet(IDB_SNAPSHOT_KEY).then(function (snapshot) {
-    if (snapshot) {
-      applySnapshot(snapshot);
-      lastKnownUpdatedAt = snapshot.updatedAt || 0;
-    }
+    if (snapshot) applySnapshot(snapshot);
   }).catch(function (err) {
     console.warn('Не вдалося прочитати локальне сховище (IndexedDB):', err);
   }).then(function () {
     renderAll();
-    var savedCode = localStorage.getItem(SYNC_CODE_KEY);
-    if (savedCode) connectCloudSync(savedCode);
-    else setSyncStatus('idle');
+    withCloudSync(function (api) {
+      api.connect(CLOUD_DOC_ID, handleRemoteSnapshot);
+    });
   });
 })();
 
