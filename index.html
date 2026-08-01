@@ -914,7 +914,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.19.0</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.19.1</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -3338,7 +3338,7 @@
       parentId = parent.parentId || null;
       guard++;
     }
-    appPathEl.textContent = '  ' + parts.join(' / ');
+    appPathEl.textContent = '/' + parts.join(' / ');
   }
 
   function getProjectChildren(parentId) {
@@ -3374,6 +3374,26 @@
     projectsBackBtn.disabled = !folder;
 
     projectsList.innerHTML = '';
+
+    // Спеціальний рядок «..» найвище списку — навігація на рівень вище (як
+    // клік по кнопці «← Назад») і водночас ціль для перетягування, щоб
+    // переносити теки/проекти на рівень вище прямо зі списку. Відсутній
+    // лише в самому корені (там вище переміщати нема куди).
+    if (folder) {
+      var upRow = document.createElement('div');
+      upRow.className = 'tag-row project-item project-item-up';
+      var upNameBtn = document.createElement('button');
+      upNameBtn.className = 'project-item-name';
+      upNameBtn.textContent = '📁 ..';
+      upNameBtn.title = 'На рівень вище';
+      upNameBtn.addEventListener('click', function () {
+        explorerFolderId = folder.parentId || null;
+        renderProjectsList();
+      });
+      upRow.appendChild(upNameBtn);
+      projectsList.appendChild(upRow);
+    }
+
     var items = getProjectChildren(explorerFolderId).slice().sort(function (a, b) {
       // Теки — спочатку, потім проекти; в межах типу — за алфавітом.
       if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
@@ -3527,12 +3547,15 @@
       var el = stack[si];
       if (!el || typeof el.closest !== 'function') continue;
 
-      if (!projectsBackBtn.disabled && el.closest('#projectsBackBtn')) {
+      var upRowMatch = el.closest('.project-item-up');
+      var backBtnMatch = !projectsBackBtn.disabled && el.closest('#projectsBackBtn');
+      if (upRowMatch || backBtnMatch) {
         var folderNow = explorerFolderId ? findProjectItem(explorerFolderId) : null;
         var upOneLevelId = folderNow ? (folderNow.parentId || null) : null;
         projectItemDrag.dropTargetFolderId = upOneLevelId;
         projectItemDrag.dropOnBack = true;
-        projectsBackBtn.classList.add('drag-target');
+        if (upRowMatch) upRowMatch.classList.add('drag-target');
+        if (backBtnMatch) projectsBackBtn.classList.add('drag-target');
         break;
       }
 
