@@ -412,6 +412,7 @@
     stroke: var(--box-stroke);
     stroke-width: 1.3;
     cursor: pointer;
+    touch-action: none;
   }
 
   .word-box.selected {
@@ -834,7 +835,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.15.1</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.15.2</span></h1>
       </header>
 
       <div class="panel">
@@ -1979,9 +1980,24 @@
         selectNode(sentenceIndex, node.id);
       });
       rect.addEventListener('pointerdown', function (e) {
-        nodeDrag = { sentenceIndex: sentenceIndex, nodeId: node.id, startX: e.clientX, startY: e.clientY, moved: false };
+        e.preventDefault();
+        nodeDrag = { sentenceIndex: sentenceIndex, nodeId: node.id, startX: e.clientX, startY: e.clientY, moved: false, dragEl: rect };
+        try {
+          rect.setPointerCapture(e.pointerId);
+        } catch (err) {
+          // Захоплення вказівника не підтримується/не вдалося — перетягування
+          // все одно працюватиме через elementsFromPoint у onNodeDragMove,
+          // просто без гарантії безперервності жесту на деяких пристроях.
+        }
         window.addEventListener('pointermove', onNodeDragMove);
         window.addEventListener('pointerup', onNodeDragEnd);
+        window.addEventListener('pointercancel', onNodeDragCancel);
+        // Без прямого preventDefault() на нативному touchmove (обов'язково
+        // passive:false) браузер на планшетах/телефонах усе одно може
+        // вирішити, що це жест прокрутки тла, і перервати перетягування —
+        // touch-action:none на самому прямокутнику сам по собі не завжди
+        // достатній (той самий випадок, що й для маркерів рамки).
+        window.addEventListener('touchmove', blockScrollDuringNodeDrag, { passive: false });
       });
       svg.appendChild(rect);
 
@@ -2413,8 +2429,19 @@
   // як брата ПЕРЕД/ПІСЛА цілі серед прямокутників одного рівня (відпускання
   // у верхню/нижню зону цілі) — так само, як переміщення карток у звичайних
   // програмах для карт розуму.
+  // Блокує нативну прокрутку тла під час активного перетягування
+  // прямокутника — той самий прийом, що й для маркерів рамки: сам
+  // touch-action:none на .word-box не завжди достатній на реальних
+  // дотикових пристроях, тому прокрутку додатково блокуємо прямим
+  // preventDefault() на нативній події touchmove (обов'язково passive:false).
+  function blockScrollDuringNodeDrag(e) {
+    if (!nodeDrag) return;
+    if (e.cancelable) e.preventDefault();
+  }
+
   function onNodeDragMove(e) {
     if (!nodeDrag) return;
+    if (e.cancelable) e.preventDefault();
     var dx = e.clientX - nodeDrag.startX;
     var dy = e.clientY - nodeDrag.startY;
     if (!nodeDrag.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
@@ -2429,8 +2456,18 @@
     nodeDrag.dropTargetNodeId = null;
     nodeDrag.dropTargetSentenceIndex = null;
 
-    var el = document.elementFromPoint(e.clientX, e.clientY);
-    var boxEl = el ? el.closest('[data-node-id]') : null;
+    // document.elementsFromPoint не підтримується в усіх мобільних
+    // браузерах/WebView — за відсутності підтримки використовуємо
+    // elementFromPoint як резервний варіант (той самий прийом, що й для
+    // перетягування маркерів рамки).
+    var stack = typeof document.elementsFromPoint === 'function'
+      ? document.elementsFromPoint(e.clientX, e.clientY)
+      : [document.elementFromPoint(e.clientX, e.clientY)].filter(Boolean);
+    var boxEl = null;
+    for (var si = 0; si < stack.length; si++) {
+      var candidate = stack[si].closest('[data-node-id]');
+      if (candidate) { boxEl = candidate; break; }
+    }
     if (!boxEl) return;
     var hoverId = parseInt(boxEl.getAttribute('data-node-id'), 10);
     if (hoverId === nodeDrag.nodeId) return;
@@ -2444,8 +2481,8 @@
     var targetSentence = STORAGE.sentences[hoverSentenceIndex];
     var targetHasParent = sameSentence && targetSentence && !!findParent(targetSentence.root, hoverId);
 
-    var rect = boxEl.getBoundingClientRect();
-    var relY = rect.height > 0 ? (e.clientY - rect.top) / rect.height : 0.5;
+    var targetRect = boxEl.getBoundingClientRect();
+    var relY = targetRect.height > 0 ? (e.clientY - targetRect.top) / targetRect.height : 0.5;
     var zone = 'child';
     if (targetHasParent && relY < 0.3) zone = 'before';
     else if (targetHasParent && relY > 0.7) zone = 'after';
@@ -2458,18 +2495,27 @@
       boxEl.classList.add('drop-target');
     } else {
       dragInsertIndicator.classList.remove('hidden');
-      dragInsertIndicator.style.left = rect.left + 'px';
-      dragInsertIndicator.style.width = rect.width + 'px';
-      dragInsertIndicator.style.top = (zone === 'before' ? rect.top - 2 : rect.bottom - 1) + 'px';
+      dragInsertIndicator.style.left = targetRect.left + 'px';
+      dragInsertIndicator.style.width = targetRect.width + 'px';
+      dragInsertIndicator.style.top = (zone === 'before' ? targetRect.top - 2 : targetRect.bottom - 1) + 'px';
     }
+  }
+
+  function cleanupNodeDragListeners() {
+    window.removeEventListener('pointermove', onNodeDragMove);
+    window.removeEventListener('pointerup', onNodeDragEnd);
+    window.removeEventListener('pointercancel', onNodeDragCancel);
+    window.removeEventListener('touchmove', blockScrollDuringNodeDrag);
   }
 
   function onNodeDragEnd(e) {
     if (!nodeDrag) return;
     var dragInfo = nodeDrag;
     nodeDrag = null;
-    window.removeEventListener('pointermove', onNodeDragMove);
-    window.removeEventListener('pointerup', onNodeDragEnd);
+    cleanupNodeDragListeners();
+    if (dragInfo.dragEl) {
+      try { dragInfo.dragEl.releasePointerCapture(e.pointerId); } catch (err) { /* вже звільнено — ігноруємо */ }
+    }
 
     var prevTarget = list.querySelector('.word-box.drop-target');
     if (prevTarget) prevTarget.classList.remove('drop-target');
@@ -2483,6 +2529,22 @@
     } else {
       reparentNode(dragInfo.sentenceIndex, dragInfo.nodeId, dragInfo.dropTargetSentenceIndex, dragInfo.dropTargetNodeId);
     }
+  }
+
+  // Браузер перервав жест (pointercancel) — наприклад, ОС вирішила, що це
+  // жест іншого типу. Перетягування скасовується без застосування будь-якої
+  // зміни (як і при скасуванні перетягування маркера рамки).
+  function onNodeDragCancel(e) {
+    if (!nodeDrag) return;
+    var dragInfo = nodeDrag;
+    nodeDrag = null;
+    cleanupNodeDragListeners();
+    if (dragInfo.dragEl) {
+      try { dragInfo.dragEl.releasePointerCapture(e.pointerId); } catch (err) { /* вже звільнено — ігноруємо */ }
+    }
+    var prevTarget = list.querySelector('.word-box.drop-target');
+    if (prevTarget) prevTarget.classList.remove('drop-target');
+    dragInsertIndicator.classList.add('hidden');
   }
 
   function reparentNode(sentenceIndex, draggedNodeId, targetSentenceIndex, targetNodeId) {
