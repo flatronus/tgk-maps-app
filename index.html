@@ -159,8 +159,8 @@
     color: var(--ink-dim);
     opacity: 0.8;
     letter-spacing: 0.01em;
-    padding: 0 14px 6px;
-    overflow-wrap: anywhere;
+    margin-left: 10px;
+    vertical-align: middle;
   }
 
   .eyebrow {
@@ -887,8 +887,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.18.1</span></h1>
-        <div class="app-path" id="appPath"></div>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.18.2</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -3312,7 +3311,7 @@
       guard++;
     }
     parts.unshift('Корінь');
-    appPathEl.textContent = parts.join(' / ');
+    appPathEl.textContent = '— ' + parts.join(' / ');
   }
 
   function getProjectChildren(parentId) {
