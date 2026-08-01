@@ -825,6 +825,33 @@
     text-transform: none;
   }
 
+  .project-item-drag-handle {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-dim);
+    font-size: 15px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .project-item-drag-handle:hover { color: var(--accent); }
+  .tag-row.project-item.dragging {
+    opacity: 0.45;
+  }
+  .tag-row.project-item.drag-target {
+    border-color: var(--accent);
+    background: rgba(111, 214, 201, 0.16);
+  }
+  #projectsBackBtn.drag-target {
+    border-color: var(--accent);
+    background: rgba(111, 214, 201, 0.16);
+  }
+
   .tag-nodes-header {
     display: flex;
     align-items: center;
@@ -887,7 +914,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.18.2</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.19.0</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -3291,11 +3318,12 @@
   // Тека, вміст якої зараз показано у вікні провідника; null — корінь.
   var explorerFolderId = null;
 
-  // Показує в шапці (під версією) повний шлях до поточно відкритого
-  // проекту у форматі, звичному для провідника файлів: «Корінь / Тека /
-  // Підтека / Назва проекту». Піднімається по parentId від проекту до
-  // кореня, тож перейменування будь-якої з батьківських тек одразу
-  // відображається після виклику цієї функції.
+  // Показує в шапці (праворуч від версії) повний шлях до поточно відкритого
+  // проекту у форматі, звичному для провідника файлів: «Тека / Підтека /
+  // Назва проекту» (без слова «Корінь» — сам факт відсутності батьківської
+  // теки й так зрозумілий). Піднімається по parentId від проекту до кореня,
+  // тож перейменування будь-якої з батьківських тек одразу відображається
+  // після виклику цієї функції.
   var appPathEl = document.getElementById('appPath');
   function updateAppPathDisplay() {
     var item = currentProjectId ? findProjectItem(currentProjectId) : null;
@@ -3310,8 +3338,7 @@
       parentId = parent.parentId || null;
       guard++;
     }
-    parts.unshift('Корінь');
-    appPathEl.textContent = '— ' + parts.join(' / ');
+    appPathEl.textContent = '  ' + parts.join(' / ');
   }
 
   function getProjectChildren(parentId) {
@@ -3364,6 +3391,16 @@
     items.forEach(function (item) {
       var row = document.createElement('div');
       row.className = 'tag-row project-item' + (item.id === currentProjectId ? ' current' : '');
+      row.dataset.projectItemId = String(item.id);
+
+      var dragHandle = document.createElement('span');
+      dragHandle.className = 'project-item-drag-handle';
+      dragHandle.textContent = '⠿';
+      dragHandle.title = 'Перетягніть, щоб перемістити до іншої теки';
+      dragHandle.addEventListener('pointerdown', function (e) {
+        startProjectItemDrag(e, item, row, dragHandle);
+      });
+      row.appendChild(dragHandle);
 
       var nameBtn = document.createElement('button');
       nameBtn.className = 'project-item-name';
@@ -3408,6 +3445,155 @@
 
       projectsList.appendChild(row);
     });
+  }
+
+  // Перетягування теки/проекту в провіднику на іншу теку (або на кнопку
+  // «← Назад», щоб перемістити на рівень вище) — той самий перевірений
+  // прийом, що й для перетягування прямокутників/маркерів рамки: захоплення
+  // вказівника (setPointerCapture) на самому елементі, window-рівневі
+  // pointermove/pointerup/pointercancel, document.elementsFromPoint (із
+  // резервним elementFromPoint) для визначення цілі під пальцем, і
+  // preventDefault() на нативному touchmove — інакше на планшеті/телефоні
+  // жест перехоплюється як прокрутка списку. Під час самого перетягування
+  // список НІКОЛИ не перерендерюється (лише клас підсвітки додається/
+  // знімається) — перерендер (renderProjectsList) відбувається лише один
+  // раз, після відпускання, коли переміщення вже застосоване до дерева.
+  var projectItemDrag = null;
+
+  function blockScrollDuringProjectItemDrag(e) {
+    if (!projectItemDrag) return;
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function clearProjectDragTargetHighlight() {
+    var prevRow = projectsList.querySelector('.project-item.drag-target');
+    if (prevRow) prevRow.classList.remove('drag-target');
+    projectsBackBtn.classList.remove('drag-target');
+  }
+
+  function startProjectItemDrag(e, item, row, handleEl) {
+    e.preventDefault();
+    e.stopPropagation();
+    // Теку не можна перемістити всередину самої себе чи власної підтеки —
+    // це утворило б цикл у дереві. Для проекту (файлу) заборонений лише
+    // він сам.
+    var forbiddenIds = item.type === 'folder'
+      ? collectProjectDescendantIds(item.id).concat([item.id])
+      : [item.id];
+    projectItemDrag = {
+      item: item,
+      forbiddenIds: forbiddenIds,
+      startX: e.clientX,
+      startY: e.clientY,
+      moved: false,
+      dragEl: handleEl,
+      rowEl: row,
+      dropTargetFolderId: undefined, // undefined = ще не визначено; null = корінь (через «Назад»)
+      dropTargetRowEl: null,
+      dropOnBack: false
+    };
+    row.classList.add('dragging');
+    try {
+      handleEl.setPointerCapture(e.pointerId);
+    } catch (err) {
+      // Захоплення вказівника не підтримується/не вдалося — перетягування
+      // все одно працюватиме через elementsFromPoint у onProjectItemDragMove.
+    }
+    window.addEventListener('pointermove', onProjectItemDragMove);
+    window.addEventListener('pointerup', onProjectItemDragEnd);
+    window.addEventListener('pointercancel', onProjectItemDragCancel);
+    window.addEventListener('touchmove', blockScrollDuringProjectItemDrag, { passive: false });
+  }
+
+  function onProjectItemDragMove(e) {
+    if (!projectItemDrag) return;
+    if (e.cancelable) e.preventDefault();
+    var dx = e.clientX - projectItemDrag.startX;
+    var dy = e.clientY - projectItemDrag.startY;
+    if (!projectItemDrag.moved && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+      projectItemDrag.moved = true;
+    }
+    if (!projectItemDrag.moved) return;
+
+    clearProjectDragTargetHighlight();
+    projectItemDrag.dropTargetFolderId = undefined;
+    projectItemDrag.dropOnBack = false;
+
+    var stack = typeof document.elementsFromPoint === 'function'
+      ? document.elementsFromPoint(e.clientX, e.clientY)
+      : [document.elementFromPoint(e.clientX, e.clientY)].filter(Boolean);
+
+    for (var si = 0; si < stack.length; si++) {
+      var el = stack[si];
+      if (!el || typeof el.closest !== 'function') continue;
+
+      if (!projectsBackBtn.disabled && el.closest('#projectsBackBtn')) {
+        var folderNow = explorerFolderId ? findProjectItem(explorerFolderId) : null;
+        var upOneLevelId = folderNow ? (folderNow.parentId || null) : null;
+        projectItemDrag.dropTargetFolderId = upOneLevelId;
+        projectItemDrag.dropOnBack = true;
+        projectsBackBtn.classList.add('drag-target');
+        break;
+      }
+
+      var rowEl = el.closest('.project-item');
+      if (rowEl) {
+        var hoverId = parseInt(rowEl.dataset.projectItemId, 10);
+        if (projectItemDrag.forbiddenIds.indexOf(hoverId) !== -1) break; // над собою/нащадком — ціль недійсна
+        var hoverItem = findProjectItem(hoverId);
+        if (hoverItem && hoverItem.type === 'folder') {
+          projectItemDrag.dropTargetFolderId = hoverId;
+          projectItemDrag.dropTargetRowEl = rowEl;
+          rowEl.classList.add('drag-target');
+        }
+        break;
+      }
+    }
+  }
+
+  function cleanupProjectItemDragListeners() {
+    window.removeEventListener('pointermove', onProjectItemDragMove);
+    window.removeEventListener('pointerup', onProjectItemDragEnd);
+    window.removeEventListener('pointercancel', onProjectItemDragCancel);
+    window.removeEventListener('touchmove', blockScrollDuringProjectItemDrag);
+  }
+
+  function onProjectItemDragEnd(e) {
+    if (!projectItemDrag) return;
+    var dragInfo = projectItemDrag;
+    projectItemDrag = null;
+    cleanupProjectItemDragListeners();
+    if (dragInfo.dragEl) {
+      try { dragInfo.dragEl.releasePointerCapture(e.pointerId); } catch (err) { /* вже звільнено — ігноруємо */ }
+    }
+    if (dragInfo.rowEl) dragInfo.rowEl.classList.remove('dragging');
+    clearProjectDragTargetHighlight();
+
+    if (!dragInfo.moved) return; // звичайний дотик без переміщення — нічого не робимо
+    if (dragInfo.dropTargetFolderId === undefined) return; // відпущено не над дійсною ціллю
+
+    var currentParentId = dragInfo.item.parentId || null;
+    var newParentId = dragInfo.dropTargetFolderId;
+    if (newParentId === currentParentId) return; // вже там — переміщення не потрібне
+
+    dragInfo.item.parentId = newParentId;
+    scheduleTreeSave();
+    renderProjectsList();
+    updateAppPathDisplay();
+  }
+
+  // Браузер перервав жест (pointercancel) — переміщення скасовується без
+  // жодної зміни дерева (як і при скасуванні перетягування прямокутника).
+  function onProjectItemDragCancel(e) {
+    if (!projectItemDrag) return;
+    var dragInfo = projectItemDrag;
+    projectItemDrag = null;
+    cleanupProjectItemDragListeners();
+    if (dragInfo.dragEl) {
+      try { dragInfo.dragEl.releasePointerCapture(e.pointerId); } catch (err) { /* вже звільнено — ігноруємо */ }
+    }
+    if (dragInfo.rowEl) dragInfo.rowEl.classList.remove('dragging');
+    clearProjectDragTargetHighlight();
   }
 
   function startRenameProjectItem(row, item) {
