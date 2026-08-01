@@ -153,6 +153,16 @@
     vertical-align: middle;
   }
 
+  .app-path {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--ink-dim);
+    opacity: 0.8;
+    letter-spacing: 0.01em;
+    padding: 0 14px 6px;
+    overflow-wrap: anywhere;
+  }
+
   .eyebrow {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 12px;
@@ -877,7 +887,8 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.17.0</span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.18.0</span></h1>
+        <div class="app-path" id="appPath"></div>
       </header>
 
       <div class="panel">
@@ -3217,6 +3228,29 @@
   // Тека, вміст якої зараз показано у вікні провідника; null — корінь.
   var explorerFolderId = null;
 
+  // Показує в шапці (під версією) повний шлях до поточно відкритого
+  // проекту у форматі, звичному для провідника файлів: «Корінь / Тека /
+  // Підтека / Назва проекту». Піднімається по parentId від проекту до
+  // кореня, тож перейменування будь-якої з батьківських тек одразу
+  // відображається після виклику цієї функції.
+  var appPathEl = document.getElementById('appPath');
+  function updateAppPathDisplay() {
+    var item = currentProjectId ? findProjectItem(currentProjectId) : null;
+    if (!item) { appPathEl.textContent = ''; return; }
+    var parts = [item.name];
+    var parentId = item.parentId || null;
+    var guard = 0;
+    while (parentId && guard < 200) {
+      var parent = findProjectItem(parentId);
+      if (!parent) break;
+      parts.unshift(parent.name);
+      parentId = parent.parentId || null;
+      guard++;
+    }
+    parts.unshift('Корінь');
+    appPathEl.textContent = parts.join(' / ');
+  }
+
   function getProjectChildren(parentId) {
     return PROJECTS.items.filter(function (item) { return (item.parentId || null) === (parentId || null); });
   }
@@ -3325,6 +3359,7 @@
       if (val) item.name = val;
       scheduleTreeSave();
       renderProjectsList();
+      updateAppPathDisplay();
     };
     renameInput.addEventListener('blur', commit);
     renameInput.addEventListener('keydown', function (e) {
@@ -3427,6 +3462,7 @@
       }
       currentProjectId = id;
       localStorage.setItem(CURRENT_PROJECT_ID_KEY, String(id));
+      updateAppPathDisplay();
       editingTarget = null;
       groupTitleEdit = null;
       input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
@@ -3741,6 +3777,40 @@
   zoomInBtn.addEventListener('click', function () { setZoom(zoomLevel + ZOOM_STEP); });
   zoomOutBtn.addEventListener('click', function () { setZoom(zoomLevel - ZOOM_STEP); });
 
+  // Масштабування «щипком» (pinch-to-zoom) двома пальцями на планшеті/
+  // смартфоні. Слухаємо саме .content-scroll (а не canvasZoom), бо саме
+  // цей контейнер займає всю робочу область і отримує дотики незалежно
+  // від того, чи є під пальцями прямокутники/рамки. preventDefault() у
+  // touchmove обов'язковий і саме з { passive: false } — інакше браузер
+  // сам виконає власний нативний зум сторінки одночасно з нашим, а також
+  // не дасть скасувати системний жест масштабування.
+  var contentScrollEl = document.getElementById('contentScroll');
+  var pinchZoomState = null;
+  function pinchTouchDistance(touches) {
+    var dx = touches[0].clientX - touches[1].clientX;
+    var dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  contentScrollEl.addEventListener('touchstart', function (e) {
+    if (e.touches.length === 2) {
+      pinchZoomState = { startDist: pinchTouchDistance(e.touches), startZoom: zoomLevel };
+    } else {
+      pinchZoomState = null;
+    }
+  }, { passive: true });
+  contentScrollEl.addEventListener('touchmove', function (e) {
+    if (pinchZoomState && e.touches.length === 2) {
+      e.preventDefault();
+      var dist = pinchTouchDistance(e.touches);
+      if (dist > 0 && pinchZoomState.startDist > 0) {
+        setZoom(pinchZoomState.startZoom * (dist / pinchZoomState.startDist));
+      }
+    }
+  }, { passive: false });
+  function endPinchZoom() { pinchZoomState = null; }
+  contentScrollEl.addEventListener('touchend', endPinchZoom);
+  contentScrollEl.addEventListener('touchcancel', endPinchZoom);
+
   // На планшетах (iPad/Android) екранна клавіатура раніше не була ніяк
   // враховано: браузер сам вирішував, як «підняти» поле вводу над
   // клавіатурою, і найчастіше панорамував (прокручував) увесь застосунок —
@@ -3809,6 +3879,7 @@
       if (snapshot) applySnapshot(snapshot);
       currentProjectId = target;
       localStorage.setItem(CURRENT_PROJECT_ID_KEY, String(target));
+      updateAppPathDisplay();
     });
   }).catch(function (err) {
     console.warn('Не вдалося прочитати вміст проекту (IndexedDB):', err);
