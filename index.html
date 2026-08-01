@@ -38,6 +38,9 @@
     --user-box-fill: var(--blueprint-bg-deep);
     --user-canvas-bg: var(--blueprint-bg);
     --user-line-color: var(--accent);
+    --user-box-border: var(--box-stroke);
+    --user-frame-fill: rgba(244, 195, 99, 0.06);
+    --user-frame-border: var(--accent-dim);
   }
 
   * { box-sizing: border-box; }
@@ -46,7 +49,7 @@
     margin: 0;
     padding: 0;
     height: 100%;
-    background: var(--user-canvas-bg);
+    background: var(--blueprint-bg);
     color: var(--ink);
     font-family: 'Inter', sans-serif;
     overflow: hidden;
@@ -93,13 +96,6 @@
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
-    background-image:
-      linear-gradient(var(--grid-line) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
-      linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid-line-strong) 1px, transparent 1px);
-    background-size: 16px 16px, 16px 16px, 80px 80px, 80px 80px;
-    background-position: -1px -1px;
   }
 
   .wrap {
@@ -125,6 +121,18 @@
        з кінця вмісту на саму сторінку (що й ховало верхню панель). */
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+    /* Тло й сітка канви — навмисно тут, а не на body: колір із «Налаштувань»
+       (--user-canvas-bg) має міняти вигляд лише робочої області з реченнями,
+       а не шапку/панель уводу/нижню панель (вони мають свої непрозорі
+       тла — .topbar лишається прозорим і показує стандартний колір body). */
+    background: var(--user-canvas-bg);
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line-strong) 1px, transparent 1px);
+    background-size: 16px 16px, 16px 16px, 80px 80px, 80px 80px;
+    background-position: -1px -1px;
   }
   .content-scroll .wrap { padding-top: 26px; padding-bottom: 26px; }
 
@@ -442,7 +450,7 @@
 
   .word-box {
     fill: var(--user-box-fill);
-    stroke: var(--box-stroke);
+    stroke: var(--user-box-border);
     stroke-width: 1.3;
     cursor: pointer;
     touch-action: none;
@@ -555,8 +563,8 @@
   }
 
   .group-frame {
-    fill: rgba(244, 195, 99, 0.06);
-    stroke: var(--accent-dim);
+    fill: var(--user-frame-fill);
+    stroke: var(--user-frame-border);
     stroke-width: 1.5;
     stroke-dasharray: 6 4;
     pointer-events: none;
@@ -1003,7 +1011,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.20.0</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.20.1</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -1149,12 +1157,24 @@
           <input type="color" id="settingBoxColor">
         </div>
         <div class="settings-color-row">
+          <label for="settingBoxBorderColor">Бордер прямокутника</label>
+          <input type="color" id="settingBoxBorderColor">
+        </div>
+        <div class="settings-color-row">
           <label for="settingCanvasColor">Тло канви</label>
           <input type="color" id="settingCanvasColor">
         </div>
         <div class="settings-color-row">
           <label for="settingLineColor">Колір лінії</label>
           <input type="color" id="settingLineColor">
+        </div>
+        <div class="settings-color-row">
+          <label for="settingFrameFillColor">Тло рамки</label>
+          <input type="color" id="settingFrameFillColor">
+        </div>
+        <div class="settings-color-row">
+          <label for="settingFrameBorderColor">Бордер рамки</label>
+          <input type="color" id="settingFrameBorderColor">
         </div>
         <div class="settings-actions-row">
           <button id="settingsColorsResetBtn">Типові кольори</button>
@@ -1517,8 +1537,11 @@
   var firebaseConfigResetBtn = document.getElementById('firebaseConfigResetBtn');
   var firebaseConfigStatus = document.getElementById('firebaseConfigStatus');
   var settingBoxColor = document.getElementById('settingBoxColor');
+  var settingBoxBorderColor = document.getElementById('settingBoxBorderColor');
   var settingCanvasColor = document.getElementById('settingCanvasColor');
   var settingLineColor = document.getElementById('settingLineColor');
+  var settingFrameFillColor = document.getElementById('settingFrameFillColor');
+  var settingFrameBorderColor = document.getElementById('settingFrameBorderColor');
   var settingsColorsResetBtn = document.getElementById('settingsColorsResetBtn');
 
   // Чи активний режим «Вставити тег» у вікні тегів: якщо так, наступний клік
@@ -3866,18 +3889,33 @@
   // три й повертає обчислені типові значення назад у самі color-інпути.
   var SETTINGS_COLOR_KEYS = {
     box: { cssVar: '--user-box-fill', storageKey: 'sd_color_box_fill', input: settingBoxColor },
+    boxBorder: { cssVar: '--user-box-border', storageKey: 'sd_color_box_border', input: settingBoxBorderColor },
     canvas: { cssVar: '--user-canvas-bg', storageKey: 'sd_color_canvas_bg', input: settingCanvasColor },
-    line: { cssVar: '--user-line-color', storageKey: 'sd_color_line', input: settingLineColor }
+    line: { cssVar: '--user-line-color', storageKey: 'sd_color_line', input: settingLineColor },
+    // Тло й бордер рамки за задумом напівпрозорі (щоб не перекривати вміст
+    // під рамкою) — <input type="color"> вміє лише непрозорі #rrggbb, тож
+    // колір користувача конвертується в rgba() із фіксованою прозорістю,
+    // що збігається з початковими типовими значеннями рамки.
+    frameFill: { cssVar: '--user-frame-fill', storageKey: 'sd_color_frame_fill', input: settingFrameFillColor, alpha: 0.06 },
+    frameBorder: { cssVar: '--user-frame-border', storageKey: 'sd_color_frame_border', input: settingFrameBorderColor, alpha: 0.35 }
   };
 
   // Приводить колір до формату #rrggbb, який єдиний коректно розуміє
-  // <input type="color"> — getComputedStyle() для кольору, заданого як HEX,
-  // повертає rgb(r, g, b), тому конвертуємо назад.
+  // <input type="color"> — getComputedStyle() повертає rgb(...)/rgba(...)
+  // навіть для значень, спершу заданих як HEX чи rgba() з фіксованою
+  // прозорістю (frame*), тому конвертуємо назад, ігноруючи альфа-канал.
   function colorToHex(value) {
-    var m = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(value);
+    var m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(value);
     if (!m) return value;
     function h(n) { return ('0' + parseInt(n, 10).toString(16)).slice(-2); }
     return '#' + h(m[1]) + h(m[2]) + h(m[3]);
+  }
+
+  function hexToRgba(hex, alpha) {
+    var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    if (!m) return hex;
+    var r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+    return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
   }
 
   function applySavedColorSettings() {
@@ -3899,8 +3937,9 @@
   Object.keys(SETTINGS_COLOR_KEYS).forEach(function (key) {
     var cfg = SETTINGS_COLOR_KEYS[key];
     cfg.input.addEventListener('input', function () {
-      document.documentElement.style.setProperty(cfg.cssVar, cfg.input.value);
-      localStorage.setItem(cfg.storageKey, cfg.input.value);
+      var computed = cfg.alpha !== undefined ? hexToRgba(cfg.input.value, cfg.alpha) : cfg.input.value;
+      document.documentElement.style.setProperty(cfg.cssVar, computed);
+      localStorage.setItem(cfg.storageKey, computed);
     });
   });
 
@@ -3929,12 +3968,37 @@
     firebaseConfigStatus.classList.toggle('settings-hint-error', !!isError);
   }
 
+  // Розбирає вставлений Firebase config. Люди зазвичай копіюють його прямо з
+  // консолі Firebase як фрагмент JS-коду —
+  // `const firebaseConfig = { apiKey: "…", ... };` — це НЕ коректний JSON
+  // (неекрановані/без лапок ключі, оголошення змінної, крапка з комою в
+  // кінці), тож чистий JSON.parse на такому тексті завжди падав з помилкою.
+  // Тут спершу прибираємо обгортку оголошення змінної й кінцеву «;», потім
+  // пробуємо JSON.parse (швидкий шлях для вже чистого JSON), а якщо це не
+  // спрацювало — розбираємо як звичайний об'єктний літерал JS через
+  // `new Function('return (...)')`, що коректно розуміє неекрановані ключі.
+  function parseFirebaseConfigInput(raw) {
+    var text = raw.trim()
+      .replace(/^(?:const|let|var)\s+\w+\s*=\s*/, '')
+      .replace(/;\s*$/, '');
+    try {
+      return { ok: true, value: JSON.parse(text) };
+    } catch (jsonErr) {
+      try {
+        var value = new Function('"use strict"; return (' + text + ');')();
+        return { ok: true, value: value };
+      } catch (jsErr) {
+        return { ok: false };
+      }
+    }
+  }
+
   function openSettingsModal() {
     var saved = localStorage.getItem(FIREBASE_CONFIG_STORAGE_KEY);
     firebaseConfigInput.value = saved ? JSON.stringify(JSON.parse(saved), null, 2) : '';
     setFirebaseStatus(saved
       ? 'Застосовано власну конфігурацію. Застосування перезавантажить сторінку.'
-      : 'Використовується типова конфігурація. Застосування перезавантажить сторінку.');
+      : 'Використовується типова конфігурація. Застосування перезавантажить сторінку. Можна вставити конфіг як є — прямо з консолі Firebase (напр. "const firebaseConfig = { ... };").');
     populateColorInputs();
     settingsModal.classList.remove('hidden');
   }
@@ -3950,13 +4014,12 @@
       setTimeout(function () { location.reload(); }, 600);
       return;
     }
-    var parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (err) {
-      setFirebaseStatus('Помилка: це не коректний JSON. Перевірте лапки/коми й спробуйте ще раз.', true);
+    var result = parseFirebaseConfigInput(raw);
+    if (!result.ok) {
+      setFirebaseStatus('Помилка: не вдалося розпізнати конфігурацію. Вставте її як є (можна прямо з консолі Firebase) або як чистий JSON.', true);
       return;
     }
+    var parsed = result.value;
     if (!parsed || typeof parsed !== 'object' || !parsed.apiKey || !parsed.projectId) {
       setFirebaseStatus('Помилка: у конфігурації мають бути принаймні поля "apiKey" і "projectId".', true);
       return;

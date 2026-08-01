@@ -2,7 +2,7 @@
 // Кешує основні файли для роботи офлайн (PWA).
 // При зміні контенту застосунку збільшуйте CACHE_NAME (напр. v2, v3),
 // щоб браузер підвантажив свіжі файли замість старих із кешу.
-var CACHE_NAME = 'sentence-diagram-cache-v42';
+var CACHE_NAME = 'sentence-diagram-cache-v43';
 var CORE_ASSETS = [
   './',
   './index.html',
