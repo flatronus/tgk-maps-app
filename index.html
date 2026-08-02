@@ -1172,7 +1172,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.3</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.4</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -3129,6 +3129,30 @@
     return svg;
   }
 
+  // Прокручує (у межах .content-scroll, а не всієї сторінки) виділений
+  // прямокутник у видиму область — викликається одразу після виділення, а
+  // також повторно з initAdaptiveViewportHeight/scheduleScrollSelectedNode-
+  // IntoView, коли з'являється/зникає екранна клавіатура на планшеті чи
+  // смартфоні: видима висота тоді змінюється ПІСЛЯ виділення, і без
+  // повторної прокрутки прямокутник міг би сховатись за клавіатурою.
+  function scrollSelectedNodeIntoView() {
+    if (selection.type !== 'node' || selection.sentenceIndex == null || !selection.nodeId) return;
+    var el = list.querySelector(
+      '.word-box[data-sentence-index="' + selection.sentenceIndex + '"][data-node-id="' + selection.nodeId + '"]'
+    );
+    if (el && el.scrollIntoView) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    }
+  }
+  var scrollSelectedNodeTimer = null;
+  function scheduleScrollSelectedNodeIntoView() {
+    if (scrollSelectedNodeTimer) clearTimeout(scrollSelectedNodeTimer);
+    scrollSelectedNodeTimer = setTimeout(function () {
+      scrollSelectedNodeTimer = null;
+      scrollSelectedNodeIntoView();
+    }, 150);
+  }
+
   function selectNode(sentenceIndex, nodeId) {
     editingTarget = null;
     groupTitleEdit = null;
@@ -3145,6 +3169,7 @@
     selection.groupId = null;
     renderAll();
     input.focus({ preventScroll: true });
+    requestAnimationFrame(scrollSelectedNodeIntoView);
   }
 
   function selectEdge(sentenceIndex, parentId, childId) {
@@ -5127,6 +5152,7 @@
     function applyHeight() {
       var h = vv ? vv.height : window.innerHeight;
       document.documentElement.style.setProperty('--app-height', h + 'px');
+      scheduleScrollSelectedNodeIntoView();
     }
     if (vv) {
       vv.addEventListener('resize', applyHeight);
