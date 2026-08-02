@@ -14,6 +14,8 @@
 <meta name="apple-mobile-web-app-title" content="Кресленик">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 <style>
   :root{
     --blueprint-bg: #16324F;
@@ -502,6 +504,137 @@
     stroke-width: 1;
     pointer-events: none;
   }
+
+  /* Рендер Markdown/LaTeX/HTML усередині прямокутника (термін і уточнення).
+     Живе у foreignObject, тому звичайний HTML/CSS, а не SVG-текст. Клікабельні
+     лише самі посилання (<a>) — решта пропускає клік/дотик до прямокутника
+     під ним (виділення), як і плаский текст раніше. */
+  .rich-content, .rich-measurer {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--ink);
+    line-height: 18px;
+    font-size: 15px;
+    font-weight: 500;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    pointer-events: none;
+  }
+  .rich-content.rich-note, .rich-measurer.rich-note {
+    color: var(--ink-dim);
+    font-size: 12px;
+    line-height: 20px;
+    font-weight: 400;
+  }
+  .rich-content p, .rich-measurer p { margin: 0 0 4px 0; }
+  .rich-content p:last-child, .rich-measurer p:last-child { margin-bottom: 0; }
+  .rich-content ul, .rich-content ol, .rich-measurer ul, .rich-measurer ol { margin: 2px 0; padding-left: 18px; }
+  .rich-content li, .rich-measurer li { margin: 1px 0; }
+  .rich-content h1, .rich-content h2, .rich-content h3,
+  .rich-content h4, .rich-content h5, .rich-content h6,
+  .rich-measurer h1, .rich-measurer h2, .rich-measurer h3,
+  .rich-measurer h4, .rich-measurer h5, .rich-measurer h6 {
+    margin: 2px 0; font-size: 1em; font-weight: 700;
+  }
+  .rich-content code, .rich-measurer code {
+    background: rgba(157, 205, 255, 0.14);
+    border-radius: 3px;
+    padding: 0 3px;
+    font-size: 0.92em;
+  }
+  .rich-content pre, .rich-measurer pre {
+    background: rgba(157, 205, 255, 0.1);
+    border-radius: 4px;
+    padding: 4px 6px;
+    margin: 2px 0;
+    overflow-x: auto;
+  }
+  .rich-content blockquote, .rich-measurer blockquote {
+    margin: 2px 0; padding-left: 8px;
+    border-left: 2px solid var(--accent-dim);
+    color: var(--ink-dim);
+  }
+  .rich-content img, .rich-measurer img { max-width: 100%; }
+  .rich-content a {
+    color: var(--accent);
+    text-decoration: underline;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .rich-measurer {
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
+    visibility: hidden;
+    white-space: normal;
+  }
+
+  /* Значок замітки (Markdown/LaTeX/HTML, вставки з ШІ-агентів) — примикає
+     праворуч до прямокутника. Сірий — замітка порожня, зелений — заповнена. */
+  .memo-icon-group { cursor: pointer; touch-action: manipulation; }
+  .memo-icon-hit { fill: transparent; pointer-events: all; }
+  .memo-icon-bg { fill: var(--paper-card); stroke: var(--ink-dim); stroke-width: 1.2; }
+  .memo-icon-bg.filled { stroke: var(--accent); fill: rgba(111, 214, 201, 0.18); }
+  .memo-icon-glyph {
+    fill: var(--ink-dim);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    text-anchor: middle;
+    dominant-baseline: middle;
+    pointer-events: none;
+    user-select: none;
+  }
+  .memo-icon-glyph.filled { fill: var(--accent); }
+
+  .memo-modal-box { width: min(560px, 92vw); max-width: min(560px, 92vw); max-height: 82vh; display: flex; flex-direction: column; text-align: left; }
+  .memo-toolbar {
+    display: flex;
+    gap: 6px;
+    padding: 6px 0 10px 0;
+    border-bottom: 1px solid var(--grid-line-strong);
+    margin-bottom: 10px;
+  }
+  .memo-toolbar button {
+    background: transparent;
+    border: 1px solid var(--ink-dim);
+    color: var(--ink-dim);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .memo-toolbar button.active { color: var(--accent); border-color: var(--accent); }
+  .memo-toolbar .memo-spacer { flex: 1; }
+  #memoTextarea {
+    width: 100%;
+    min-height: 260px;
+    flex: 1;
+    resize: vertical;
+    background: rgba(157, 205, 255, 0.06);
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 6px;
+    color: var(--ink);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 10px;
+    box-sizing: border-box;
+  }
+  #memoRenderView {
+    display: none;
+    min-height: 260px;
+    max-height: 60vh;
+    overflow-y: auto;
+    border: 1px solid var(--grid-line-strong);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  #memoRenderView.rich-content { pointer-events: auto; user-select: text; -webkit-user-select: text; }
+  .memo-hint { color: var(--ink-dim); font-size: 11px; margin-top: 8px; }
 
   .node-tag-text {
     fill: var(--edge-selected);
@@ -1021,7 +1154,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.20.3</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.0</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -1117,6 +1250,24 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="memoModal">
+    <div class="modal-box memo-modal-box">
+      <div class="tags-modal-header">
+        <h3>Замітка</h3>
+        <button class="modal-close-btn" id="memoCloseBtn" title="Закрити">✕</button>
+      </div>
+      <div class="memo-toolbar">
+        <button id="memoEditModeBtn" title="Редагувати (Markdown / LaTeX / HTML джерело)">✎ Редагувати</button>
+        <button id="memoRenderModeBtn" title="Рендер Markdown / LaTeX / HTML">▤ Рендер</button>
+        <span class="memo-spacer"></span>
+        <button id="memoDeleteBtn" title="Очистити замітку">🗑</button>
+      </div>
+      <textarea id="memoTextarea" placeholder="Markdown, LaTeX ($...$ / $$...$$) чи HTML — можна вставити скопійовану відповідь ШІ-агента…"></textarea>
+      <div id="memoRenderView" class="rich-content"></div>
+      <div class="memo-hint">Підтримується Markdown, LaTeX та HTML. Перемикайте «Редагувати»/«Рендер», щоб бачити джерело чи готовий вигляд.</div>
+    </div>
+  </div>
+
   <div id="dragInsertIndicator" class="drag-insert-indicator hidden"></div>
 
   <div class="modal-overlay hidden" id="projectsModal">
@@ -1201,10 +1352,39 @@
   // ребрами (edges) із заданим типом лінії. STORAGE.sentences — масив таких дерев.
   var STORAGE = { sentences: [], nextNodeId: 1 };
 
-  // Глобальний список тегів (спільний для всіх графічних речень): { id, name }.
-  // Кожен прямокутник (node.tags) зберігає лише id застосованих до нього тегів.
+  // Глобальний список тегів — спільний для ВСІХ проектів/книг/файлів/карт
+  // усієї екосистеми "Провідника проектів", а не лише для одного поточно
+  // відкритого проекту: { id, name }. Зберігається окремим ключем IndexedDB
+  // ('globalTags', див. saveGlobalTags) і синхронізується в хмару окремим
+  // документом ('meta'/'tags'), незалежно від вмісту конкретного проекту.
+  // Кожен прямокутник (node.tags) зберігає лише id застосованих до нього
+  // тегів — самі теги (назви) спільні для всіх проектів, тож перемикання
+  // між проектами більше НЕ підміняє список тегів.
   var TAGS = [];
   var nextTagId = 1;
+  var GLOBAL_TAGS_KEY = 'globalTags';
+
+  function saveGlobalTags() {
+    idbSet(GLOBAL_TAGS_KEY, { tags: TAGS, nextTagId: nextTagId }).catch(function (err) {
+      console.warn('Не вдалося зберегти глобальні теги локально (IndexedDB):', err);
+    });
+    if (!applyingRemoteUpdate) setSyncStatus(false);
+  }
+
+  // Глобальні теги, отримані з хмари (напр. створені/перейменовані/видалені
+  // на іншому пристрої) — застосовуємо одразу, оновлюємо відкрите вікно
+  // тегів (якщо воно зараз відкрите) і перерендеровуємо канву.
+  function handleRemoteGlobalTags(remote) {
+    if (!remote) return;
+    applyingRemoteUpdate = true;
+    TAGS = remote.tags || [];
+    nextTagId = remote.nextTagId || 1;
+    applyingRemoteUpdate = false;
+    idbSet(GLOBAL_TAGS_KEY, remote).catch(function () {});
+    if (typeof tagsModal !== 'undefined' && !tagsModal.classList.contains('hidden')) renderTagsList();
+    renderAll();
+    setSyncStatus(true);
+  }
 
   // ===== Проекти: дерево тек/проектів + збереження (IndexedDB + Firestore) =====
   //
@@ -1298,7 +1478,7 @@
     var nodes = [];
     var edges = [];
     function walk(node) {
-      nodes.push({ id: node.id, text: node.text, notes: node.notes || [], tags: node.tags || [] });
+      nodes.push({ id: node.id, text: node.text, notes: node.notes || [], tags: node.tags || [], memo: node.memo || '' });
       node.children.forEach(function (edge) {
         var e = { parentId: node.id, childId: edge.node.id, lineType: edge.lineType };
         if (edge.frameGroupId !== undefined) e.frameGroupId = edge.frameGroupId;
@@ -1318,7 +1498,7 @@
   function unflattenTree(flat) {
     var byId = {};
     flat.nodes.forEach(function (n) {
-      byId[n.id] = { id: n.id, text: n.text, notes: n.notes || [], tags: n.tags || [], children: [] };
+      byId[n.id] = { id: n.id, text: n.text, notes: n.notes || [], tags: n.tags || [], memo: n.memo || '', children: [] };
     });
     flat.edges.forEach(function (e) {
       var parent = byId[e.parentId];
@@ -1345,8 +1525,6 @@
         }),
         nextNodeId: STORAGE.nextNodeId
       },
-      tags: TAGS,
-      nextTagId: nextTagId,
       nextGroupId: nextGroupId
     };
     return JSON.parse(JSON.stringify(raw));
@@ -1366,8 +1544,6 @@
       return { root: root, groups: sentence.groups || [] };
     });
     STORAGE.nextNodeId = snap.storage.nextNodeId || 1;
-    TAGS = snap.tags || [];
-    nextTagId = snap.nextTagId || 1;
     nextGroupId = snap.nextGroupId || 1;
   }
 
@@ -1413,7 +1589,7 @@
     var snapshot = currentProjectId ? serializeSnapshot() : null;
     var tree = serializeTree();
     withCloudSync(function (api) {
-      var jobs = [api.push('meta', 'tree', tree)];
+      var jobs = [api.push('meta', 'tree', tree), api.push('meta', 'tags', { tags: TAGS, nextTagId: nextTagId })];
       if (currentProjectId) jobs.push(api.push('projects', currentProjectId, snapshot));
       Promise.all(jobs).then(function () {
         setSyncStatus(true);
@@ -1527,6 +1703,14 @@
   var tagNodesList = document.getElementById('tagNodesList');
   var tagsBackBtn = document.getElementById('tagsBackBtn');
 
+  var memoModal = document.getElementById('memoModal');
+  var memoCloseBtn = document.getElementById('memoCloseBtn');
+  var memoEditModeBtn = document.getElementById('memoEditModeBtn');
+  var memoRenderModeBtn = document.getElementById('memoRenderModeBtn');
+  var memoDeleteBtn = document.getElementById('memoDeleteBtn');
+  var memoTextarea = document.getElementById('memoTextarea');
+  var memoRenderView = document.getElementById('memoRenderView');
+
   var saveBtn = document.getElementById('saveBtn');
   var projectsBtn = document.getElementById('projectsBtn');
   var projectsModal = document.getElementById('projectsModal');
@@ -1614,6 +1798,9 @@
   // що виводиться в лівому нижньому куті — резервується, лише якщо в
   // прямокутника є хоч один застосований тег.
   var TAG_LABEL_HEIGHT = 16;
+  // Місце праворуч від прямокутника під значок замітки (гурток "🗒"), що
+  // примикає до його правого краю.
+  var MEMO_ICON_SPACE = 26;
   var SIBLING_GAP = 30;
   var LEVEL_GAP = 64;
   var ROW_PAD = 12;
@@ -1718,12 +1905,186 @@
     return lines.length ? lines : [''];
   }
 
+  // ===== Рендер збагаченого вмісту прямокутника: Markdown, LaTeX, HTML,
+  // автоматичні посилання на сторінки сайтів =====
+  //
+  // Вихідний (сирий) текст (node.text / node.notes[i] / node.memo) завжди
+  // зберігається як є — саме він показується в полі редагування (тобто
+  // "дерендерюється" автоматично, без окремого кроку, щойно вмикається
+  // редагування). У режимі перегляду (не редагування) той самий текст
+  // проганяється через renderRich() і показується як HTML у <foreignObject>
+  // замість SVG <text> — рендериться миттєво, без окремої дії користувача.
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // Дозволені теги (і їхні дозволені атрибути) для «сирого» HTML, вставленого
+  // користувачем у прямокутник/замітку — усе інше або вирізається разом із
+  // вмістом (script/style/iframe/object/embed/form/…), або "розгортається"
+  // (сам тег прибирається, дочірні елементи лишаються).
+  var RICH_STRIP_TAGS = ['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META', 'FORM', 'INPUT', 'BUTTON', 'TEXTAREA', 'SVG', 'VIDEO', 'AUDIO'];
+  var RICH_ALLOWED_TAGS = {
+    A: ['href', 'title'], B: [], STRONG: [], I: [], EM: [], U: [], S: [], STRIKE: [],
+    BR: [], P: [], DIV: [], SPAN: [], UL: [], OL: [], LI: [], CODE: [], PRE: [],
+    BLOCKQUOTE: [], H1: [], H2: [], H3: [], H4: [], H5: [], H6: [],
+    TABLE: [], THEAD: [], TBODY: [], TR: [], TD: [], TH: [],
+    IMG: ['src', 'alt', 'title', 'width', 'height'], HR: [], SUB: [], SUP: [], MARK: [], SMALL: [], KBD: []
+  };
+  function sanitizeRichNode(container) {
+    var toUnwrap = [];
+    Array.prototype.forEach.call(container.childNodes, function (child) {
+      if (child.nodeType !== 1) return;
+      var tag = child.tagName;
+      if (!RICH_ALLOWED_TAGS.hasOwnProperty(tag)) {
+        sanitizeRichNode(child);
+        toUnwrap.push(child);
+        return;
+      }
+      var allowed = RICH_ALLOWED_TAGS[tag];
+      Array.prototype.slice.call(child.attributes).forEach(function (attr) {
+        var name = attr.name.toLowerCase();
+        if (name.indexOf('on') === 0 || allowed.indexOf(attr.name) === -1) {
+          child.removeAttribute(attr.name);
+          return;
+        }
+        if ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(attr.value)) {
+          child.removeAttribute(attr.name);
+        }
+      });
+      if (tag === 'A') { child.setAttribute('target', '_blank'); child.setAttribute('rel', 'noopener noreferrer'); }
+      sanitizeRichNode(child);
+    });
+    toUnwrap.forEach(function (child) {
+      while (child.firstChild) container.insertBefore(child.firstChild, child);
+      container.removeChild(child);
+    });
+  }
+  function sanitizeHtml(html) {
+    try {
+      var doc = new DOMParser().parseFromString('<div>' + html + '</div>', 'text/html');
+      var root = doc.body.firstChild;
+      var stripSelector = RICH_STRIP_TAGS.join(',');
+      Array.prototype.slice.call(root.querySelectorAll(stripSelector)).forEach(function (n) { n.remove(); });
+      sanitizeRichNode(root);
+      return root.innerHTML;
+    } catch (e) {
+      return escapeHtml(html);
+    }
+  }
+
+  // Легкий, самодостатній (без CDN) перетворювач Markdown → HTML: заголовки,
+  // жирний/курсив, `код`, ```блоки коду```, посилання [текст](url), звичайні
+  // марковані/нумеровані списки, цитати (>) та автоматичні посилання на
+  // "голі" URL (https://...) — саме це й дозволяє вставляти в прямокутник
+  // посилання на сторінки сайтів, а не лише текст.
+  function inlineMd(text) {
+    var out = escapeHtml(text);
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>');
+    out = out.replace(/(^|[^"'>])(https?:\/\/[^\s<]+)/g, function (m, pre, url) {
+      return pre + '<a href="' + url + '">' + url + '</a>';
+    });
+    return out;
+  }
+  function markdownToHtml(src) {
+    var lines = String(src == null ? '' : src).replace(/\r\n?/g, '\n').split('\n');
+    var out = [];
+    var listStack = [];
+    var inCode = false, codeLines = [];
+    function closeLists() { while (listStack.length) out.push('</' + listStack.pop() + '>'); }
+    for (var idx = 0; idx < lines.length; idx++) {
+      var line = lines[idx];
+      if (/^\s*```/.test(line)) {
+        if (!inCode) { inCode = true; codeLines = []; closeLists(); }
+        else { inCode = false; out.push('<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>'); }
+        continue;
+      }
+      if (inCode) { codeLines.push(line); continue; }
+      var h = line.match(/^(#{1,6})\s+(.*)$/);
+      if (h) { closeLists(); var lvl = h[1].length; out.push('<h' + lvl + '>' + inlineMd(h[2]) + '</h' + lvl + '>'); continue; }
+      var bq = line.match(/^>\s?(.*)$/);
+      if (bq) { closeLists(); out.push('<blockquote>' + inlineMd(bq[1]) + '</blockquote>'); continue; }
+      var ul = line.match(/^\s*[-*]\s+(.*)$/);
+      if (ul) {
+        if (listStack[listStack.length - 1] !== 'ul') { closeLists(); listStack.push('ul'); out.push('<ul>'); }
+        out.push('<li>' + inlineMd(ul[1]) + '</li>');
+        continue;
+      }
+      var ol = line.match(/^\s*\d+\.\s+(.*)$/);
+      if (ol) {
+        if (listStack[listStack.length - 1] !== 'ol') { closeLists(); listStack.push('ol'); out.push('<ol>'); }
+        out.push('<li>' + inlineMd(ol[1]) + '</li>');
+        continue;
+      }
+      closeLists();
+      if (line.trim() === '') continue;
+      out.push('<p>' + inlineMd(line) + '</p>');
+    }
+    closeLists();
+    if (inCode) out.push('<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>');
+    return out.join('');
+  }
+
+  // Позначки $...$ / $$...$$ рендеряться через KaTeX (window.katex,
+  // підключений з CDN у <head> — кешується service worker'ом офлайн після
+  // першого успішного завантаження, як і решта ресурсів застосунку). Якщо
+  // KaTeX з якоїсь причини недоступний (немає інтернету при першому запуску),
+  // формула показується як звичайний код-текст замість помилки.
+  var RICH_LATEX_RE = /\$\$([\s\S]+?)\$\$|\$([^\$\n]+)\$/g;
+  function renderRich(raw) {
+    var src = String(raw == null ? '' : raw);
+    if (!src) return '';
+    var mathTokens = [];
+    var withoutMath = src.replace(RICH_LATEX_RE, function (m, block, inline) {
+      var isBlock = block !== undefined;
+      var tex = isBlock ? block : inline;
+      var html;
+      if (window.katex) {
+        try { html = window.katex.renderToString(tex, { throwOnError: false, displayMode: isBlock }); }
+        catch (e) { html = '<code>' + escapeHtml(m) + '</code>'; }
+      } else {
+        html = '<code>' + escapeHtml(m) + '</code>';
+      }
+      var i = mathTokens.push(html) - 1;
+      return '\u0000M' + i + '\u0000';
+    });
+    var probe = withoutMath.replace(/\u0000M\d+\u0000/g, '');
+    var looksLikeHtml = /<\/?[a-zA-Z][^>]*>/.test(probe);
+    var bodyHtml = looksLikeHtml ? sanitizeHtml(withoutMath) : markdownToHtml(withoutMath);
+    bodyHtml = bodyHtml.replace(/\u0000M(\d+)\u0000/g, function (m, i) { return mathTokens[Number(i)]; });
+    return bodyHtml;
+  }
+
+  // Прихований (visibility:hidden, але присутній у розкладці сторінки)
+  // вимірювач — дозволяє дізнатись реальні ширину/висоту вже відрендереного
+  // HTML (Markdown/LaTeX/HTML), так само як measureTextWidth/wrapBoxText
+  // робили це раніше для звичайного SVG-тексту через canvas.
+  var richMeasurerEl = document.createElement('div');
+  richMeasurerEl.className = 'rich-measurer';
+  document.body.appendChild(richMeasurerEl);
+  function measureRich(html, maxWidth, isNote) {
+    richMeasurerEl.className = 'rich-measurer' + (isNote ? ' rich-note' : '');
+    richMeasurerEl.style.width = Math.max(maxWidth, 20) + 'px';
+    richMeasurerEl.innerHTML = html && html.length ? html : '&nbsp;';
+    var w = Math.min(richMeasurerEl.scrollWidth, Math.max(maxWidth, 20));
+    var h = richMeasurerEl.scrollHeight || (isNote ? NOTE_LINE_HEIGHT : NODE_TITLE_LINE_HEIGHT);
+    return { width: w, height: h };
+  }
+
   function createNode(text) {
     var node = {
       id: STORAGE.nextNodeId++,
       text: text,
       notes: [], // уточнюючі рядки всередині того самого прямокутника
       tags: [], // id тегів (STORAGE.tags), застосованих до цього прямокутника
+      memo: '', // замітка Markdown/LaTeX/HTML (значок праворуч від прямокутника)
       children: [] // { node, lineType }
     };
     return node;
@@ -1838,26 +2199,33 @@
     function measure(node, depth) {
       maxDepth = Math.max(maxDepth, depth);
       var contentMaxWidth = BOX_MAX_WIDTH - BOX_PAD_X * 2;
-      var titleLines = wrapBoxText(node.text, contentMaxWidth);
-      var noteLinesArr = (node.notes || []).map(function (noteText) {
-        return wrapBoxText(noteText, contentMaxWidth);
-      });
-      var widest = 0;
-      titleLines.forEach(function (line) {
-        widest = Math.max(widest, measureTextWidth(line));
-      });
-      noteLinesArr.forEach(function (lines) {
-        lines.forEach(function (line) { widest = Math.max(widest, measureTextWidth(line)); });
-      });
       var hasNotes = !!(node.notes && node.notes.length);
       var hasTags = !!(node.tags && node.tags.length);
-      node.titleLines = titleLines;
-      node.noteLinesArr = noteLinesArr;
+
+      // Розмір прямокутника рахується за фактично ВІДРЕНДЕРЕНИМ вмістом
+      // (Markdown/LaTeX/HTML), а не за сирим текстом — інакше прямокутник
+      // міг би не вміщати заголовки/списки/формули, що займають більше
+      // місця за звичайний рядок тексту. Сирий текст (для поля редагування,
+      // де вміст завжди "дерендерений") лишається без змін у node.text/notes.
+      node.titleHtml = renderRich(node.text);
+      var titleSize = measureRich(node.titleHtml, contentMaxWidth, false);
+
+      node.noteHtmlArr = (node.notes || []).map(function (noteText) {
+        return renderRich(noteText);
+      });
+      var noteSizes = node.noteHtmlArr.map(function (html) {
+        return measureRich(html, contentMaxWidth, true);
+      });
+
+      var widest = titleSize.width;
+      noteSizes.forEach(function (s) { widest = Math.max(widest, s.width); });
+
       node.width = Math.min(Math.max(widest + BOX_PAD_X * 2, 40), BOX_MAX_WIDTH);
-      var titleLineCount = Math.max(titleLines.length, 1);
-      node.headerHeight = titleLineCount * NODE_TITLE_LINE_HEIGHT + (hasNotes ? HEADER_PAD_WITH_NOTES : HEADER_PAD_NO_NOTES);
-      var totalNoteLines = noteLinesArr.reduce(function (sum, lines) { return sum + lines.length; }, 0);
-      node.height = node.headerHeight + (hasNotes ? totalNoteLines * NOTE_LINE_HEIGHT + 6 : 0);
+      var titleContentHeight = Math.max(titleSize.height, NODE_TITLE_LINE_HEIGHT);
+      node.headerHeight = titleContentHeight + (hasNotes ? HEADER_PAD_WITH_NOTES : HEADER_PAD_NO_NOTES);
+      node.noteSizes = noteSizes;
+      var totalNoteHeight = noteSizes.reduce(function (sum, s) { return sum + Math.max(s.height, NOTE_LINE_HEIGHT); }, 0);
+      node.height = node.headerHeight + (hasNotes ? totalNoteHeight + 6 : 0);
       if (hasTags) node.height += TAG_LABEL_HEIGHT;
       node.depth = depth;
       maxWidthByDepth[depth] = Math.max(maxWidthByDepth[depth] || 0, node.width);
@@ -1975,7 +2343,7 @@
 
     place(root);
 
-    var totalWidth = columnX[maxDepth] + maxWidthByDepth[maxDepth] + ROW_PAD;
+    var totalWidth = columnX[maxDepth] + maxWidthByDepth[maxDepth] + ROW_PAD + MEMO_ICON_SPACE;
     var totalHeight = cursorY - SIBLING_GAP + ROW_PAD;
     return { width: totalWidth, height: totalHeight };
   }
@@ -2572,22 +2940,23 @@
         });
         svg.appendChild(headerField.fo);
       } else {
-        var text = document.createElementNS(SVG_NS, 'text');
-        text.setAttribute('class', 'word-text');
-        var titleLines = node.titleLines && node.titleLines.length ? node.titleLines : [node.text];
-        var titleBlockHeight = titleLines.length * NODE_TITLE_LINE_HEIGHT;
-        var titleFirstY = node.y + node.headerHeight / 2 - titleBlockHeight / 2 + NODE_TITLE_LINE_HEIGHT / 2 + 1;
-        var titleTextX = node.x + BOX_PAD_X;
-        text.setAttribute('x', titleTextX);
-        text.setAttribute('y', titleFirstY);
-        titleLines.forEach(function (line, lineIdx) {
-          var tspan = document.createElementNS(SVG_NS, 'tspan');
-          tspan.setAttribute('x', titleTextX);
-          if (lineIdx > 0) tspan.setAttribute('dy', NODE_TITLE_LINE_HEIGHT);
-          tspan.textContent = line;
-          text.appendChild(tspan);
-        });
-        svg.appendChild(text);
+        var titleFo = document.createElementNS(SVG_NS, 'foreignObject');
+        titleFo.setAttribute('x', node.x + BOX_PAD_X);
+        titleFo.setAttribute('y', node.y);
+        titleFo.setAttribute('width', Math.max(node.width - BOX_PAD_X * 2, 1));
+        titleFo.setAttribute('height', node.headerHeight);
+        var titleDiv = document.createElement('div');
+        titleDiv.className = 'rich-content';
+        titleDiv.style.display = 'flex';
+        titleDiv.style.alignItems = 'center';
+        titleDiv.style.height = '100%';
+        titleDiv.style.width = '100%';
+        var titleInner = document.createElement('div');
+        titleInner.style.width = '100%';
+        titleInner.innerHTML = node.titleHtml && node.titleHtml.length ? node.titleHtml : '&nbsp;';
+        titleDiv.appendChild(titleInner);
+        titleFo.appendChild(titleDiv);
+        svg.appendChild(titleFo);
       }
 
       if (node.notes && node.notes.length) {
@@ -2599,11 +2968,11 @@
         divider.setAttribute('y2', node.y + node.headerHeight);
         svg.appendChild(divider);
 
-        var noteLineOffset = 0;
+        var noteYOffset = 0;
         node.notes.forEach(function (noteText, i) {
-          var lines = (node.noteLinesArr && node.noteLinesArr[i]) ? node.noteLinesArr[i] : [noteText];
-          var noteY = node.y + node.headerHeight + noteLineOffset * NOTE_LINE_HEIGHT;
-          var noteHeight = lines.length * NOTE_LINE_HEIGHT;
+          var sizeInfo = (node.noteSizes && node.noteSizes[i]) ? node.noteSizes[i] : { height: NOTE_LINE_HEIGHT };
+          var noteY = node.y + node.headerHeight + noteYOffset;
+          var noteHeight = Math.max(sizeInfo.height, NOTE_LINE_HEIGHT);
           if (isEditing) {
             var noteField = createEditableField(node.x, noteY, node.width, noteHeight, noteText, 'note-edit-input', function (val, commit) {
               node.notes[i] = val;
@@ -2616,21 +2985,26 @@
             });
             svg.appendChild(noteField.fo);
           } else {
-            var noteEl = document.createElementNS(SVG_NS, 'text');
-            noteEl.setAttribute('class', 'note-text');
-            var noteTextX = node.x + BOX_PAD_X;
-            noteEl.setAttribute('x', noteTextX);
-            noteEl.setAttribute('y', noteY + NOTE_LINE_HEIGHT / 2 + 3);
-            lines.forEach(function (line, lineIdx) {
-              var tspan = document.createElementNS(SVG_NS, 'tspan');
-              tspan.setAttribute('x', noteTextX);
-              if (lineIdx > 0) tspan.setAttribute('dy', NOTE_LINE_HEIGHT);
-              tspan.textContent = line;
-              noteEl.appendChild(tspan);
-            });
-            svg.appendChild(noteEl);
+            var noteFo = document.createElementNS(SVG_NS, 'foreignObject');
+            noteFo.setAttribute('x', node.x + BOX_PAD_X);
+            noteFo.setAttribute('y', noteY);
+            noteFo.setAttribute('width', Math.max(node.width - BOX_PAD_X * 2, 1));
+            noteFo.setAttribute('height', noteHeight);
+            var noteDiv = document.createElement('div');
+            noteDiv.className = 'rich-content rich-note';
+            noteDiv.style.display = 'flex';
+            noteDiv.style.alignItems = 'center';
+            noteDiv.style.height = '100%';
+            noteDiv.style.width = '100%';
+            var noteInner = document.createElement('div');
+            noteInner.style.width = '100%';
+            var noteHtml = (node.noteHtmlArr && node.noteHtmlArr[i] !== undefined) ? node.noteHtmlArr[i] : renderRich(noteText);
+            noteInner.innerHTML = noteHtml && noteHtml.length ? noteHtml : '&nbsp;';
+            noteDiv.appendChild(noteInner);
+            noteFo.appendChild(noteDiv);
+            svg.appendChild(noteFo);
           }
-          noteLineOffset += lines.length;
+          noteYOffset += noteHeight;
         });
       }
 
@@ -2668,6 +3042,49 @@
           tagCursorX += labelWidth + 8;
         });
       }
+
+      // Значок замітки (Markdown/LaTeX/HTML, у т.ч. вставки з ШІ-агентів) —
+      // примикає праворуч до прямокутника, ближче до верхнього краю, щоб не
+      // перекривати лінію-з'єднання, яка виходить з правого боку по центру
+      // висоти прямокутника. Сірий — замітка порожня, зелений — заповнена.
+      (function drawMemoIcon() {
+        var hasMemo = !!(node.memo && node.memo.trim());
+        var iconR = 9;
+        var iconCx = node.x + node.width + 10;
+        var iconCy = node.y + iconR + 3;
+
+        var group = document.createElementNS(SVG_NS, 'g');
+        group.setAttribute('class', 'memo-icon-group');
+
+        var hit = document.createElementNS(SVG_NS, 'circle');
+        hit.setAttribute('class', 'memo-icon-hit');
+        hit.setAttribute('cx', iconCx);
+        hit.setAttribute('cy', iconCy);
+        hit.setAttribute('r', iconR + 6);
+        group.appendChild(hit);
+
+        var bg = document.createElementNS(SVG_NS, 'circle');
+        bg.setAttribute('class', 'memo-icon-bg' + (hasMemo ? ' filled' : ''));
+        bg.setAttribute('cx', iconCx);
+        bg.setAttribute('cy', iconCy);
+        bg.setAttribute('r', iconR);
+        group.appendChild(bg);
+
+        var glyph = document.createElementNS(SVG_NS, 'text');
+        glyph.setAttribute('class', 'memo-icon-glyph' + (hasMemo ? ' filled' : ''));
+        glyph.setAttribute('x', iconCx);
+        glyph.setAttribute('y', iconCy + 1);
+        glyph.textContent = '🗒';
+        group.appendChild(glyph);
+
+        group.addEventListener('click', function (e) {
+          e.stopPropagation();
+          openMemoModal(sentenceIndex, node.id);
+        });
+        group.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+
+        svg.appendChild(group);
+      })();
 
       node.children.forEach(function (edge) {
         drawNodeBox(edge.node);
@@ -3368,6 +3785,7 @@
     var commit = function () {
       var val = renameInput.value.trim();
       if (val) tag.name = val;
+      saveGlobalTags();
       renderTagsList();
       renderAll();
     };
@@ -3385,6 +3803,7 @@
   // які його використовували, в усіх графічних реченнях.
   function deleteTag(tagId) {
     TAGS = TAGS.filter(function (t) { return t.id !== tagId; });
+    saveGlobalTags();
     STORAGE.sentences.forEach(function (sentence) {
       (function walk(node) {
         if (node.tags && node.tags.length) {
@@ -3473,6 +3892,7 @@
     var name = newTagInput.value.trim();
     if (!name) return;
     TAGS.push({ id: nextTagId++, name: name });
+    saveGlobalTags();
     newTagInput.value = '';
     renderTagsList();
   });
@@ -3484,6 +3904,115 @@
     if (!tagInsertTarget) return;
     tagInsertMode = !tagInsertMode;
     insertTagModeBtn.classList.toggle('active', tagInsertMode);
+  });
+
+  // ===== Замітка прямокутника (Markdown / LaTeX / HTML) =====
+
+  var memoModalTarget = null; // { sentenceIndex, nodeId }
+  var memoRenderMode = false;
+
+  function setMemoMode(renderMode) {
+    memoRenderMode = renderMode;
+    memoEditModeBtn.classList.toggle('active', !renderMode);
+    memoRenderModeBtn.classList.toggle('active', renderMode);
+    memoTextarea.style.display = renderMode ? 'none' : 'block';
+    memoRenderView.style.display = renderMode ? 'block' : 'none';
+    if (renderMode) {
+      var html = renderRich(memoTextarea.value);
+      memoRenderView.innerHTML = html && html.length ? html : '<span style="opacity:.6">Замітка порожня.</span>';
+    }
+  }
+
+  function openMemoModal(sentenceIndex, nodeId) {
+    var sentence = STORAGE.sentences[sentenceIndex];
+    var node = sentence ? findNode(sentence.root, nodeId) : null;
+    if (!node) return;
+    memoModalTarget = { sentenceIndex: sentenceIndex, nodeId: nodeId };
+    memoTextarea.value = node.memo || '';
+    setMemoMode(!!(node.memo && node.memo.trim()));
+    memoModal.classList.remove('hidden');
+    if (!memoRenderMode) memoTextarea.focus();
+  }
+
+  // Записує поточний вміст текстового поля в node.memo без повного
+  // перемальовування канви (вікно замітки й так її повністю перекриває) —
+  // канва оновлюється (значок сірий/зелений) лише при закритті вікна.
+  function applyMemoValue() {
+    if (!memoModalTarget) return null;
+    var sentence = STORAGE.sentences[memoModalTarget.sentenceIndex];
+    var node = sentence ? findNode(sentence.root, memoModalTarget.nodeId) : null;
+    if (!node) return null;
+    node.memo = memoTextarea.value;
+    scheduleSave();
+    return node;
+  }
+
+  function closeMemoModal() {
+    applyMemoValue();
+    memoModal.classList.add('hidden');
+    memoModalTarget = null;
+    renderAll();
+  }
+
+  memoCloseBtn.addEventListener('click', closeMemoModal);
+  memoModal.addEventListener('click', function (e) { if (e.target === memoModal) closeMemoModal(); });
+  memoEditModeBtn.addEventListener('click', function () { setMemoMode(false); memoTextarea.focus(); });
+  memoRenderModeBtn.addEventListener('click', function () { setMemoMode(true); });
+  memoTextarea.addEventListener('input', applyMemoValue);
+  memoDeleteBtn.addEventListener('click', function () {
+    showConfirm('Очистити замітку?', function () {
+      memoTextarea.value = '';
+      applyMemoValue();
+      setMemoMode(false);
+      memoTextarea.focus();
+    });
+  });
+
+  // Дозволяє швидко перетворити просту розмітку HTML (напр. скопійовану
+  // відповідь ШІ-агента з жирним/курсивом/списками/посиланнями) назад у
+  // Markdown-джерело, щоб воно й далі лишалось редагованим текстом, а не
+  // "застряглим" форматованим HTML-фрагментом.
+  function htmlToMarkdown(html) {
+    try {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      function walk(n) {
+        if (n.nodeType === 3) return n.textContent;
+        if (n.nodeType !== 1) return '';
+        var inner = Array.prototype.map.call(n.childNodes, walk).join('');
+        switch (n.tagName) {
+          case 'STRONG': case 'B': return '**' + inner + '**';
+          case 'EM': case 'I': return '*' + inner + '*';
+          case 'CODE': return '`' + inner + '`';
+          case 'A': var href = n.getAttribute('href'); return href ? '[' + inner + '](' + href + ')' : inner;
+          case 'BR': return '\n';
+          case 'H1': return '\n# ' + inner + '\n';
+          case 'H2': return '\n## ' + inner + '\n';
+          case 'H3': return '\n### ' + inner + '\n';
+          case 'H4': case 'H5': case 'H6': return '\n#### ' + inner + '\n';
+          case 'LI': return '\n- ' + inner;
+          case 'P': case 'DIV': case 'TR': return '\n' + inner + '\n';
+          case 'BLOCKQUOTE': return '\n> ' + inner + '\n';
+          case 'PRE': return '\n```\n' + n.textContent + '\n```\n';
+          default: return inner;
+        }
+      }
+      return walk(doc.body).replace(/\n{3,}/g, '\n\n').trim();
+    } catch (e) {
+      return null;
+    }
+  }
+  memoTextarea.addEventListener('paste', function (e) {
+    if (!e.clipboardData) return;
+    var html = e.clipboardData.getData('text/html');
+    if (!html || !html.trim()) return;
+    var md = htmlToMarkdown(html);
+    if (md === null || md === '') return;
+    e.preventDefault();
+    var start = memoTextarea.selectionStart, end = memoTextarea.selectionEnd;
+    var val = memoTextarea.value;
+    memoTextarea.value = val.slice(0, start) + md + val.slice(end);
+    memoTextarea.selectionStart = memoTextarea.selectionEnd = start + md.length;
+    applyMemoValue();
   });
 
   // ===== Провідник проектів =====
@@ -4462,7 +4991,26 @@
   // Далі підключаємось до хмари: постійно стежимо за деревом тек/проектів
   // (щоб бачити нові/перейменовані/видалені деінде проекти) і за вмістом
   // саме поточного відкритого проекту.
-  idbGet(IDB_TREE_KEY).then(function (tree) {
+  // Теги — глобальний реєстр, спільний для всієї екосистеми проектів,
+  // тому завантажується один раз при старті (а не при кожному відкритті
+  // проекту). needTagsMigration лишається true, лише якщо глобального
+  // реєстру ще не існує (перший запуск після оновлення) — тоді, одразу
+  // після відкриття першого проекту нижче, теги, що лишились у ЙОГО
+  // старому (доверсійному) знімку, одноразово переносяться в новий
+  // глобальний реєстр.
+  var needTagsMigration = false;
+  var tagsLoadPromise = idbGet(GLOBAL_TAGS_KEY).then(function (g) {
+    if (g && Array.isArray(g.tags)) {
+      TAGS = g.tags;
+      nextTagId = g.nextTagId || 1;
+    } else {
+      needTagsMigration = true;
+    }
+  }).catch(function () { needTagsMigration = true; });
+
+  tagsLoadPromise.then(function () {
+    return idbGet(IDB_TREE_KEY);
+  }).then(function (tree) {
     if (tree && Array.isArray(tree.items)) {
       applyTree(tree);
       return null;
@@ -4494,6 +5042,11 @@
       currentProjectId = target;
       localStorage.setItem(CURRENT_PROJECT_ID_KEY, String(target));
       updateAppPathDisplay();
+      if (needTagsMigration && snapshot && Array.isArray(snapshot.tags) && snapshot.tags.length) {
+        TAGS = snapshot.tags;
+        nextTagId = snapshot.nextTagId || 1;
+        saveGlobalTags();
+      }
     });
   }).catch(function (err) {
     console.warn('Не вдалося прочитати вміст проекту (IndexedDB):', err);
@@ -4501,6 +5054,7 @@
     renderAll();
     withCloudSync(function (api) {
       api.watch('meta', 'tree', handleRemoteTree);
+      api.watch('meta', 'tags', handleRemoteGlobalTags);
     });
     watchProjectContent(currentProjectId);
   });
