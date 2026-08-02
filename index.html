@@ -579,6 +579,22 @@
     color: var(--ink-dim);
   }
   .rich-content img, .rich-measurer img { max-width: 100%; }
+  .rich-content table, .rich-measurer table, #memoRenderView table {
+    border-collapse: collapse;
+    margin: 4px 0;
+    font-size: 0.95em;
+    max-width: 100%;
+  }
+  .rich-content th, .rich-content td,
+  .rich-measurer th, .rich-measurer td,
+  #memoRenderView th, #memoRenderView td {
+    border: 1px solid var(--grid-line-strong);
+    padding: 3px 8px;
+  }
+  .rich-content th, .rich-measurer th, #memoRenderView th {
+    background: rgba(157, 205, 255, 0.1);
+    font-weight: 700;
+  }
   .rich-content a {
     color: var(--accent);
     text-decoration: underline;
@@ -1227,7 +1243,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.7</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.8</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -2079,6 +2095,33 @@
     });
     return out;
   }
+  // Таблиці Markdown (`| a | b |` + рядок-розділювач `| --- | --- |`) —
+  // розбиває один рядок таблиці на клітинки, підтримує екранований `\|`
+  // усередині клітинки та обрізає крайні "|" на початку/кінці рядка.
+  function splitTableRow(line) {
+    var trimmed = line.trim();
+    if (trimmed.charAt(0) === '|') trimmed = trimmed.slice(1);
+    if (trimmed.charAt(trimmed.length - 1) === '|') trimmed = trimmed.slice(0, -1);
+    var ESCAPED_PIPE = '\u0002';
+    trimmed = trimmed.replace(/\\\|/g, ESCAPED_PIPE);
+    return trimmed.split('|').map(function (cell) {
+      return cell.split(ESCAPED_PIPE).join('|').trim();
+    });
+  }
+  // Рядок-розділювач заголовка таблиці: лише "-", ":", "|" і пробіли, і хоч
+  // одне тире (відрізняє від звичайного тексту з дефісами).
+  function isTableSeparatorLine(line) {
+    return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line) && line.indexOf('-') !== -1;
+  }
+  function tableCellAlign(sep) {
+    var left = sep.charAt(0) === ':';
+    var right = sep.charAt(sep.length - 1) === ':';
+    if (left && right) return 'center';
+    if (right) return 'right';
+    if (left) return 'left';
+    return '';
+  }
+
   function markdownToHtml(src) {
     var lines = String(src == null ? '' : src).replace(/\r\n?/g, '\n').split('\n');
     var out = [];
@@ -2097,6 +2140,30 @@
       if (h) { closeLists(); var lvl = h[1].length; out.push('<h' + lvl + '>' + inlineMd(h[2]) + '</h' + lvl + '>'); continue; }
       var bq = line.match(/^>\s?(.*)$/);
       if (bq) { closeLists(); out.push('<blockquote>' + inlineMd(bq[1]) + '</blockquote>'); continue; }
+      if (line.indexOf('|') !== -1 && idx + 1 < lines.length && isTableSeparatorLine(lines[idx + 1])) {
+        closeLists();
+        var headerCells = splitTableRow(line);
+        var aligns = splitTableRow(lines[idx + 1]).map(tableCellAlign);
+        var bodyRows = [];
+        var j = idx + 2;
+        while (j < lines.length && lines[j].indexOf('|') !== -1 && lines[j].trim() !== '') {
+          bodyRows.push(splitTableRow(lines[j]));
+          j++;
+        }
+        var theadHtml = '<thead><tr>' + headerCells.map(function (cell, ci) {
+          var alignStyle = aligns[ci] ? ' style="text-align:' + aligns[ci] + '"' : '';
+          return '<th' + alignStyle + '>' + inlineMd(cell) + '</th>';
+        }).join('') + '</tr></thead>';
+        var tbodyHtml = '<tbody>' + bodyRows.map(function (row) {
+          return '<tr>' + row.map(function (cell, ci) {
+            var alignStyle = aligns[ci] ? ' style="text-align:' + aligns[ci] + '"' : '';
+            return '<td' + alignStyle + '>' + inlineMd(cell) + '</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</tbody>';
+        out.push('<table>' + theadHtml + tbodyHtml + '</table>');
+        idx = j - 1;
+        continue;
+      }
       // Маркер списку виводиться як окремий <span> поруч із текстом у
       // спільному flex-рядку (а не через нативні <ul>/<ol>/<li>) — маркер,
       // згенерований браузером через list-style, у деяких контекстах
