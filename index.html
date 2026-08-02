@@ -588,7 +588,15 @@
   }
   .memo-icon-glyph.filled { fill: var(--accent); }
 
-  .memo-modal-box { width: min(560px, 92vw); max-width: min(560px, 92vw); max-height: 82vh; display: flex; flex-direction: column; text-align: left; }
+  .memo-modal-box {
+    width: 96vw;
+    max-width: 96vw;
+    height: 75vh;
+    max-height: 75vh;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+  }
   .memo-toolbar {
     display: flex;
     gap: 6px;
@@ -610,9 +618,9 @@
   .memo-toolbar .memo-spacer { flex: 1; }
   #memoTextarea {
     width: 100%;
-    min-height: 260px;
     flex: 1;
-    resize: vertical;
+    min-height: 0;
+    resize: none;
     background: rgba(157, 205, 255, 0.06);
     border: 1px solid var(--grid-line-strong);
     border-radius: 6px;
@@ -624,8 +632,8 @@
   }
   #memoRenderView {
     display: none;
-    min-height: 260px;
-    max-height: 60vh;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     border: 1px solid var(--grid-line-strong);
     border-radius: 6px;
@@ -1154,7 +1162,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.0</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.1</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -2945,6 +2953,7 @@
         titleFo.setAttribute('y', node.y);
         titleFo.setAttribute('width', Math.max(node.width - BOX_PAD_X * 2, 1));
         titleFo.setAttribute('height', node.headerHeight);
+        titleFo.style.pointerEvents = 'none';
         var titleDiv = document.createElement('div');
         titleDiv.className = 'rich-content';
         titleDiv.style.display = 'flex';
@@ -2990,6 +2999,7 @@
             noteFo.setAttribute('y', noteY);
             noteFo.setAttribute('width', Math.max(node.width - BOX_PAD_X * 2, 1));
             noteFo.setAttribute('height', noteHeight);
+            noteFo.style.pointerEvents = 'none';
             var noteDiv = document.createElement('div');
             noteDiv.className = 'rich-content rich-note';
             noteDiv.style.display = 'flex';
