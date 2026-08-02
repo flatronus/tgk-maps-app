@@ -532,6 +532,28 @@
   .rich-content p:last-child, .rich-measurer p:last-child { margin-bottom: 0; }
   .rich-content ul, .rich-content ol, .rich-measurer ul, .rich-measurer ol { margin: 2px 0; padding-left: 18px; }
   .rich-content li, .rich-measurer li { margin: 1px 0; }
+  /* Списки Markdown (-, *, + та "1.") — навмисно НЕ нативні <ul>/<ol>/<li>
+     (їхній маркер від list-style у деяких контекстах — foreignObject у SVG,
+     окремі вбудовані webview на планшетах — міг опинитись не на одному
+     рядку з текстом); маркер і текст — це два <span> в одному flex-рядку,
+     тому роз'єднати їх на різні рядки неможливо в принципі. */
+  .rich-content .md-list, .rich-measurer .md-list { margin: 2px 0; }
+  .rich-content .md-list-item, .rich-measurer .md-list-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin: 1px 0;
+  }
+  .rich-content .md-list-marker, .rich-measurer .md-list-marker {
+    flex: 0 0 auto;
+    min-width: 12px;
+    text-align: right;
+    opacity: 0.85;
+  }
+  .rich-content .md-list-content, .rich-measurer .md-list-content {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
   .rich-content h1, .rich-content h2, .rich-content h3,
   .rich-content h4, .rich-content h5, .rich-content h6,
   .rich-measurer h1, .rich-measurer h2, .rich-measurer h3,
@@ -562,6 +584,26 @@
     text-decoration: underline;
     pointer-events: auto;
     cursor: pointer;
+  }
+  /* Формули KaTeX ($...$ / $$...$$) виводились спотворено: успадкований від
+     .rich-content/.rich-measurer "word-wrap: break-word; overflow-wrap: any-
+     where;" ламав символи формули посеред гліфа, коли вона не вміщалась у
+     вузький прямокутник. KaTeX має власну, точно прораховану розкладку — тут
+     перенесення слів вимикається повністю, а надто широка формула радше
+     прокручується горизонтально, ніж ламається. */
+  .rich-content .katex, .rich-content .katex *,
+  .rich-measurer .katex, .rich-measurer .katex *,
+  #memoRenderView .katex, #memoRenderView .katex * {
+    word-wrap: normal;
+    overflow-wrap: normal;
+    white-space: nowrap;
+    font-weight: normal;
+  }
+  .rich-content .katex-display, .rich-measurer .katex-display, #memoRenderView .katex-display {
+    margin: 4px 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
   .rich-measurer {
     position: fixed;
@@ -1172,7 +1214,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.5</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.6</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -2027,9 +2069,9 @@
   function markdownToHtml(src) {
     var lines = String(src == null ? '' : src).replace(/\r\n?/g, '\n').split('\n');
     var out = [];
-    var listStack = [];
+    var listOpen = false; // чи зараз триває список (ul/ol) — закриваємо обгортку при виході
     var inCode = false, codeLines = [];
-    function closeLists() { while (listStack.length) out.push('</' + listStack.pop() + '>'); }
+    function closeLists() { if (listOpen) { out.push('</div>'); listOpen = false; } }
     for (var idx = 0; idx < lines.length; idx++) {
       var line = lines[idx];
       if (/^\s*```/.test(line)) {
@@ -2042,16 +2084,21 @@
       if (h) { closeLists(); var lvl = h[1].length; out.push('<h' + lvl + '>' + inlineMd(h[2]) + '</h' + lvl + '>'); continue; }
       var bq = line.match(/^>\s?(.*)$/);
       if (bq) { closeLists(); out.push('<blockquote>' + inlineMd(bq[1]) + '</blockquote>'); continue; }
-      var ul = line.match(/^\s*[-*]\s+(.*)$/);
+      // Маркер списку виводиться як окремий <span> поруч із текстом у
+      // спільному flex-рядку (а не через нативні <ul>/<ol>/<li>) — маркер,
+      // згенерований браузером через list-style, у деяких контекстах
+      // (foreignObject у SVG, окремі вбудовані webview) міг опинитись НЕ на
+      // одному рядку з текстом; ручний маркер повністю виключає цю проблему.
+      var ul = line.match(/^\s*[-*+]\s+(.*)$/);
       if (ul) {
-        if (listStack[listStack.length - 1] !== 'ul') { closeLists(); listStack.push('ul'); out.push('<ul>'); }
-        out.push('<li>' + inlineMd(ul[1]) + '</li>');
+        if (!listOpen) { out.push('<div class="md-list">'); listOpen = true; }
+        out.push('<div class="md-list-item"><span class="md-list-marker">•</span><span class="md-list-content">' + inlineMd(ul[1]) + '</span></div>');
         continue;
       }
-      var ol = line.match(/^\s*\d+\.\s+(.*)$/);
+      var ol = line.match(/^\s*(\d+)\.\s+(.*)$/);
       if (ol) {
-        if (listStack[listStack.length - 1] !== 'ol') { closeLists(); listStack.push('ol'); out.push('<ol>'); }
-        out.push('<li>' + inlineMd(ol[1]) + '</li>');
+        if (!listOpen) { out.push('<div class="md-list">'); listOpen = true; }
+        out.push('<div class="md-list-item"><span class="md-list-marker">' + escapeHtml(ol[1]) + '.</span><span class="md-list-content">' + inlineMd(ol[2]) + '</span></div>');
         continue;
       }
       closeLists();
