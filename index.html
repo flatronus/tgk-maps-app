@@ -1172,7 +1172,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.4</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.5</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -3141,7 +3141,7 @@
       '.word-box[data-sentence-index="' + selection.sentenceIndex + '"][data-node-id="' + selection.nodeId + '"]'
     );
     if (el && el.scrollIntoView) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
     }
   }
   var scrollSelectedNodeTimer = null;
@@ -4858,6 +4858,16 @@
       selection.groupId = null;
     }
 
+    // list.innerHTML='' на мить обнуляє висоту вмісту .content-scroll, і
+    // браузер СИНХРОННО «підтискає» його scrollTop до нового (тимчасово
+    // нульового) максимуму — це й спричиняло видимий стрибок канви нагору
+    // перед тим, як прямокутники перемальовувались і scrollSelectedNode-
+    // IntoView скролив назад. Запам'ятовуємо позицію прокрутки заздалегідь
+    // і відновлюємо її одразу після перебудови (до того, як браузер встигає
+    // намалювати кадр) — стрибка не видно.
+    var prevScrollTop = contentScrollEl.scrollTop;
+    var prevScrollLeft = contentScrollEl.scrollLeft;
+
     list.innerHTML = '';
     emptyState.style.display = STORAGE.sentences.length === 0 ? 'block' : 'none';
 
@@ -4879,6 +4889,9 @@
       row.appendChild(diagramHolder);
       list.appendChild(row);
     });
+
+    contentScrollEl.scrollTop = prevScrollTop;
+    contentScrollEl.scrollLeft = prevScrollLeft;
 
     countLabel.textContent = 'Речень додано: ' + STORAGE.sentences.length;
     updateTargetIndicator();
@@ -5160,6 +5173,19 @@
     } else {
       window.addEventListener('resize', applyHeight);
     }
+    // Підстраховка: на деяких планшетах закриття клавіатури (blur поля
+    // вводу) не завжди одразу викликає подію visualViewport 'resize' —
+    // без цього --app-height лишається заниженим, і під нижньою панеллю
+    // (statusbar) з'являється зайвий проміжок. Перераховуємо ще раз із
+    // невеликою затримкою (поки триває анімація приховання клавіатури) і
+    // повторно трохи пізніше про всяк випадок.
+    input.addEventListener('blur', function () {
+      setTimeout(applyHeight, 80);
+      setTimeout(applyHeight, 400);
+    });
+    window.addEventListener('orientationchange', function () {
+      setTimeout(applyHeight, 300);
+    });
     applyHeight();
   }
   initAdaptiveViewportHeight();
