@@ -49,7 +49,7 @@
     --user-canvas-bg: #16324F;
     --user-line-color: #6FD6C9;
     --user-box-border: #CFE8FF;
-    --user-frame-fill: rgba(244, 195, 99, 0.06);
+    --user-frame-fill: rgba(244, 195, 99, 0.22);
     --user-frame-border: rgba(111, 214, 201, 0.35);
   }
 
@@ -1021,7 +1021,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.20.2</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.20.3</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -3906,7 +3906,7 @@
     // під рамкою) — <input type="color"> вміє лише непрозорі #rrggbb, тож
     // колір користувача конвертується в rgba() із фіксованою прозорістю,
     // що збігається з початковими типовими значеннями рамки.
-    frameFill: { cssVar: '--user-frame-fill', storageKey: 'sd_color_frame_fill', input: settingFrameFillColor, alpha: 0.06 },
+    frameFill: { cssVar: '--user-frame-fill', storageKey: 'sd_color_frame_fill', input: settingFrameFillColor, alpha: 0.22 },
     frameBorder: { cssVar: '--user-frame-border', storageKey: 'sd_color_frame_border', input: settingFrameBorderColor, alpha: 0.35 }
   };
 
@@ -3932,7 +3932,16 @@
     Object.keys(SETTINGS_COLOR_KEYS).forEach(function (key) {
       var cfg = SETTINGS_COLOR_KEYS[key];
       var saved = localStorage.getItem(cfg.storageKey);
-      if (saved) document.documentElement.style.setProperty(cfg.cssVar, saved);
+      if (!saved) return;
+      // Для напівпрозорих (frame*) не застосовуємо збережений рядок «як є» —
+      // альфа могла змінитися в новішій версії застосунку (напр. типову
+      // прозорість рамки збільшено, бо стара була ледь помітна). Тут
+      // витягуємо саме відтінок, який обрав користувач, і перераховуємо
+      // rgba() з ПОТОЧНОЮ константою alpha — тоді раніше збережений колір
+      // рамки одразу стає контрастнішим після оновлення, без повторного
+      // вибору кольору користувачем.
+      var toApply = cfg.alpha !== undefined ? hexToRgba(colorToHex(saved), cfg.alpha) : saved;
+      document.documentElement.style.setProperty(cfg.cssVar, toApply);
     });
   }
 
