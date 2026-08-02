@@ -653,7 +653,7 @@
     flex: 1;
     min-height: 0;
     resize: none;
-    background: rgba(157, 205, 255, 0.06);
+    background: #f6f8fa;
     border: 1px solid var(--grid-line-strong);
     border-radius: 6px;
     color: var(--ink);
@@ -892,7 +892,12 @@
 
   /* Вікно «Замітка»: на комп'ютері — ширина як у шапки застосунку (.wrap
      max-width: 1100px), а не на весь монітор; на планшеті/телефоні (те саме
-     767px, що й інші мобільні підлаштування нижче) — на всю ширину екрана. */
+     767px, що й інші мобільні підлаштування нижче) — на всю ширину екрана.
+     Тло — біле (як аркуш паперу), на відміну від темної теми решти
+     застосунку: локально перевизначаємо CSS-змінні кольорів (--ink тощо),
+     тому весь вміст усередині (заголовок, кнопки, текст, посилання,
+     код/KaTeX) автоматично отримує контрастні темні кольори на білому тлі
+     без потреби окремо перефарбовувати кожен елемент. */
   .memo-modal-box {
     width: min(1100px, 96vw);
     max-width: min(1100px, 96vw);
@@ -901,6 +906,14 @@
     display: flex;
     flex-direction: column;
     text-align: left;
+    background: #ffffff;
+    color: #16212c;
+    --ink: #16212c;
+    --ink-dim: #5b6b7a;
+    --grid-line-strong: rgba(20, 32, 46, 0.16);
+    --accent: #0e8f7d;
+    --accent-dim: #0e8f7d;
+    --danger: #c0392b;
   }
   @media (max-width: 720px) {
     .memo-modal-box {
@@ -1214,7 +1227,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.6</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.7</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -2110,19 +2123,23 @@
     return out.join('');
   }
 
-  // Позначки $...$ / $$...$$ рендеряться через KaTeX (window.katex,
-  // підключений з CDN у <head> — кешується service worker'ом офлайн після
-  // першого успішного завантаження, як і решта ресурсів застосунку). Якщо
-  // KaTeX з якоїсь причини недоступний (немає інтернету при першому запуску),
-  // формула показується як звичайний код-текст замість помилки.
-  var RICH_LATEX_RE = /\$\$([\s\S]+?)\$\$|\$([^\$\n]+)\$/g;
+  // Позначки $...$ / $$...$$ ТА \(...\) / \[...\] рендеряться через KaTeX
+  // (window.katex, підключений з CDN у <head> — кешується service worker'ом
+  // офлайн після першого успішного завантаження, як і решта ресурсів
+  // застосунку). Якщо KaTeX з якоїсь причини недоступний (немає інтернету
+  // при першому запуску), формула показується як звичайний код-текст
+  // замість помилки.
+  var RICH_LATEX_RE = /\$\$([\s\S]+?)\$\$|\$([^\$\n]+)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
   function renderRich(raw) {
     var src = String(raw == null ? '' : raw);
     if (!src) return '';
     var mathTokens = [];
-    var withoutMath = src.replace(RICH_LATEX_RE, function (m, block, inline) {
-      var isBlock = block !== undefined;
-      var tex = isBlock ? block : inline;
+    var withoutMath = src.replace(RICH_LATEX_RE, function (m, dollarBlock, dollarInline, bracketBlock, parenInline) {
+      var isBlock = dollarBlock !== undefined || bracketBlock !== undefined;
+      var tex = dollarBlock !== undefined ? dollarBlock
+        : dollarInline !== undefined ? dollarInline
+        : bracketBlock !== undefined ? bracketBlock
+        : parenInline;
       var html;
       if (window.katex) {
         try { html = window.katex.renderToString(tex, { throwOnError: false, displayMode: isBlock }); }
