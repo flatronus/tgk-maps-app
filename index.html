@@ -1172,7 +1172,7 @@
   <div class="topbar">
     <div class="wrap">
       <header>
-        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.2</span><span class="app-path" id="appPath"></span></h1>
+        <h1>Кресленик речень <span class="app-version" id="appVersion">v1.21.3</span><span class="app-path" id="appPath"></span></h1>
       </header>
 
       <div class="panel">
@@ -1381,22 +1381,35 @@
   var TAGS = [];
   var nextTagId = 1;
   var GLOBAL_TAGS_KEY = 'globalTags';
+  // Час останньої відомої зміни глобальних тегів (локальної чи з хмари) —
+  // потрібен, щоб "останній записаний перемагає" (updatedAt) не дозволяв
+  // застарілому/порожньому документу з хмари (напр. збереженому "Зберегти"
+  // ще до того, як з'явились теги) затерти новіші локальні теги при
+  // КОЖНОМУ наступному завантаженні застосунку — саме через це раніше
+  // список тегів "чистився" після оновлення.
+  var globalTagsUpdatedAt = 0;
 
   function saveGlobalTags() {
-    idbSet(GLOBAL_TAGS_KEY, { tags: TAGS, nextTagId: nextTagId }).catch(function (err) {
+    globalTagsUpdatedAt = Date.now();
+    idbSet(GLOBAL_TAGS_KEY, { tags: TAGS, nextTagId: nextTagId, updatedAt: globalTagsUpdatedAt }).catch(function (err) {
       console.warn('Не вдалося зберегти глобальні теги локально (IndexedDB):', err);
     });
     if (!applyingRemoteUpdate) setSyncStatus(false);
   }
 
   // Глобальні теги, отримані з хмари (напр. створені/перейменовані/видалені
-  // на іншому пристрої) — застосовуємо одразу, оновлюємо відкрите вікно
-  // тегів (якщо воно зараз відкрите) і перерендеровуємо канву.
+  // на іншому пристрої) — застосовуємо, ЛИШЕ якщо вони справді новіші за
+  // те, що вже відомо локально (updatedAt); інакше застарілий/порожній
+  // документ з хмари міг би затирати щойно завантажені локальні теги при
+  // кожному старті застосунку. Оновлюємо відкрите вікно тегів (якщо воно
+  // зараз відкрите) і перерендеровуємо канву.
   function handleRemoteGlobalTags(remote) {
     if (!remote) return;
+    if ((remote.updatedAt || 0) <= globalTagsUpdatedAt) return;
     applyingRemoteUpdate = true;
     TAGS = remote.tags || [];
     nextTagId = remote.nextTagId || 1;
+    globalTagsUpdatedAt = remote.updatedAt || 0;
     applyingRemoteUpdate = false;
     idbSet(GLOBAL_TAGS_KEY, remote).catch(function () {});
     if (typeof tagsModal !== 'undefined' && !tagsModal.classList.contains('hidden')) renderTagsList();
@@ -1607,7 +1620,7 @@
     var snapshot = currentProjectId ? serializeSnapshot() : null;
     var tree = serializeTree();
     withCloudSync(function (api) {
-      var jobs = [api.push('meta', 'tree', tree), api.push('meta', 'tags', { tags: TAGS, nextTagId: nextTagId })];
+      var jobs = [api.push('meta', 'tree', tree), api.push('meta', 'tags', { tags: TAGS, nextTagId: nextTagId, updatedAt: globalTagsUpdatedAt || Date.now() })];
       if (currentProjectId) jobs.push(api.push('projects', currentProjectId, snapshot));
       Promise.all(jobs).then(function () {
         setSyncStatus(true);
@@ -3131,7 +3144,7 @@
     selection.childId = null;
     selection.groupId = null;
     renderAll();
-    input.focus();
+    input.focus({ preventScroll: true });
   }
 
   function selectEdge(sentenceIndex, parentId, childId) {
@@ -4870,7 +4883,7 @@
         input.placeholder = DEFAULT_INPUT_PLACEHOLDER;
         input.value = '';
         renderAll();
-        input.focus();
+        input.focus({ preventScroll: true });
         return;
       }
 
@@ -4888,7 +4901,7 @@
 
       input.value = '';
       renderAll();
-      input.focus();
+      input.focus({ preventScroll: true });
       return;
     }
 
@@ -4910,7 +4923,7 @@
 
     input.value = '';
     renderAll();
-    input.focus();
+    input.focus({ preventScroll: true });
   }
 
   function addClarifyingLine() {
@@ -4929,7 +4942,7 @@
 
     input.value = '';
     renderAll();
-    input.focus();
+    input.focus({ preventScroll: true });
   }
 
   addBtn.addEventListener('click', addBox);
@@ -4976,7 +4989,7 @@
       input.value = (titleGroup && titleGroup.title) ? titleGroup.title : '';
       input.placeholder = 'Заголовок рамки, тоді «+»…';
       renderAll();
-      input.focus();
+      input.focus({ preventScroll: true });
       input.select();
       return;
     }
@@ -5147,6 +5160,7 @@
     if (g && Array.isArray(g.tags)) {
       TAGS = g.tags;
       nextTagId = g.nextTagId || 1;
+      globalTagsUpdatedAt = g.updatedAt || 1;
     } else {
       needTagsMigration = true;
     }
